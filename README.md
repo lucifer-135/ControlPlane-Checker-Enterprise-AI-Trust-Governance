@@ -200,8 +200,8 @@ flowchart TD
 
 ### Step 1: Clone the Repository
 ```bash
-git clone https://github.com/your-username/controlplane-checker.git
-cd controlplane-checker
+git clone https://github.com/lucifer-135/ControlPlane-Checker.git
+cd ControlPlane-Checker
 ```
 
 ### Step 2: Install Dependencies

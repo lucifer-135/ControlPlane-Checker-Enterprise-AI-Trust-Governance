@@ -13,20 +13,22 @@
 
 ---
 
+<a id="table-of-contents"></a>
 ## 📌 Table of Contents
-1. [Overview & Problem Statement](#-overview--problem-statement)
-2. [Solution Architecture](#-solution-architecture)
-3. [The Three Governance Lanes](#-the-three-governance-lanes)
-4. [Four-Tier Policy Enactment](#-four-tier-policy-enactment)
-5. [Key Platform Features](#-key-platform-features)
-6. [Technology Stack & Dependencies](#-technology-stack--dependencies)
-7. [Security & Privacy Posture](#-security--privacy-posture)
-8. [Getting Started & Execution Instructions](#-getting-started--execution-instructions)
-9. [Project Directory Layout](#-project-directory-layout)
-10. [License](#-license)
+1. [Overview & Problem Statement](#overview-problem-statement)
+2. [Solution Architecture](#solution-architecture)
+3. [The Three Governance Lanes](#the-three-governance-lanes)
+4. [Four-Tier Policy Enactment](#four-tier-policy-enactment)
+5. [Key Platform Features](#key-platform-features)
+6. [Technology Stack & Dependencies](#technology-stack-dependencies)
+7. [Security & Privacy Posture](#security-privacy-posture)
+8. [Getting Started & Execution Instructions](#getting-started-execution-instructions)
+9. [Project Directory Layout](#project-directory-layout)
+10. [License](#license)
 
 ---
 
+<a id="overview-problem-statement"></a>
 ## 🚀 Overview & Problem Statement
 
 Enterprises deploying Generative AI models into production encounter four catastrophic failure modes:
@@ -39,6 +41,7 @@ Enterprises deploying Generative AI models into production encounter four catast
 
 ---
 
+<a id="solution-architecture"></a>
 ## 🏗️ Solution Architecture
 
 ```mermaid
@@ -94,6 +97,7 @@ flowchart TD
 
 ---
 
+<a id="the-three-governance-lanes"></a>
 ## 🚦 The Three Governance Lanes
 
 ### 1. 🎯 Performance & Groundedness Lane
@@ -118,6 +122,7 @@ flowchart TD
 
 ---
 
+<a id="four-tier-policy-enactment"></a>
 ## 🎚️ Four-Tier Policy Enactment
 
 | Tier | Condition / Threshold | Enactment Action | Latency Overhead |
@@ -129,6 +134,7 @@ flowchart TD
 
 ---
 
+<a id="key-platform-features"></a>
 ## 🖥️ Key Platform Features
 
 ### 📊 1. Executive Telemetry Dashboard (`DashboardTab.tsx`)
@@ -163,6 +169,7 @@ flowchart TD
 
 ---
 
+<a id="technology-stack-dependencies"></a>
 ## 📦 Technology Stack & Dependencies
 
 ### Core Frameworks & Libraries
@@ -179,6 +186,7 @@ flowchart TD
 
 ---
 
+<a id="security-privacy-posture"></a>
 ## 🔒 Security & Privacy Posture
 
 - **Zero Client-Side Key Exposure**: The `GEMINI_API_KEY` is strictly accessed on the Node.js Express server. No API keys or secret credentials are ever bundled or transmitted to the client browser.
@@ -189,6 +197,7 @@ flowchart TD
 
 ---
 
+<a id="getting-started-execution-instructions"></a>
 ## 💻 Getting Started & Execution Instructions
 
 ### Prerequisites
@@ -250,6 +259,7 @@ npm start
 
 ---
 
+<a id="project-directory-layout"></a>
 ## 📂 Project Directory Layout
 
 ```
@@ -257,7 +267,6 @@ ControlPlane-Checker/
 ├── .env.example              # Sanitized environment template
 ├── .gitignore                # Comprehensive Git exclusion rules
 ├── index.html                # HTML entrypoint & typography configuration
-├── metadata.json             # AI Studio & applet metadata
 ├── package.json              # Dependencies, build scripts & metadata
 ├── tsconfig.json             # TypeScript compiler settings
 ├── vite.config.ts            # Vite & Tailwind CSS bundler configuration
@@ -295,6 +304,7 @@ ControlPlane-Checker/
 
 ---
 
+<a id="license"></a>
 ## 📄 License
 
 This project is licensed under the **Apache-2.0 License**. See [LICENSE](LICENSE) for details.

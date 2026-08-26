@@ -211,7 +211,7 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
           const matchingSpan = sortedSpans.find(
             (s) =>
               s.text.toLowerCase() === part.toLowerCase() ||
-              s.text.replace(/[\$,]/g, '').toLowerCase() === part.replace(/[\$,]/g, '').toLowerCase()
+              s.text.replace(/[$,]/g, '').toLowerCase() === part.replace(/[$,]/g, '').toLowerCase()
           );
 
           if (matchingSpan) {
@@ -258,16 +258,28 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
               </span>
               <span className="font-mono text-xs text-[#667085] tnum">of {escalatedInteractions.length} total</span>
             </div>
-            <div className="mt-3">
-              <label className="inline-flex items-center text-xs text-[#475467] cursor-pointer hover:text-[#101828] transition-colors">
+            <div className="mt-3.5 pt-3 border-t border-slate-200 flex items-center justify-between gap-3">
+              <label className="relative inline-flex items-center gap-2.5 cursor-pointer select-none group">
                 <input
                   type="checkbox"
                   checked={includeSoftCorrect}
                   onChange={(e) => setIncludeSoftCorrect(e.target.checked)}
-                  className="rounded bg-white/80 border-[#D5DAE1] text-[#4F46E5] mr-2 focus:ring-0 cursor-pointer"
+                  className="sr-only peer"
                 />
-                Include Soft-Correct items
+                <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-4 peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#4F46E5] transition-colors shadow-inner"></div>
+                <span className="text-xs text-[#475467] group-hover:text-[#101828] font-medium transition-colors">
+                  Include Soft-Correct items
+                </span>
               </label>
+              <span
+                className={`text-[10px] font-mono font-semibold px-2 py-0.5 rounded-md transition-colors ${
+                  includeSoftCorrect
+                    ? 'bg-[#EEF0FE] text-[#4F46E5] border border-[#D9D6FE]'
+                    : 'bg-slate-100 text-[#667085] border border-slate-200'
+                }`}
+              >
+                {includeSoftCorrect ? 'ON' : 'OFF'}
+              </span>
             </div>
           </div>
           <div className="h-12 w-12 rounded-xl bg-[#FEF3F2]/90 border border-[#FECDCA] flex items-center justify-center text-[#D92D20] shrink-0 shadow-xs">

@@ -41,6 +41,7 @@ interface LiveFeedTabProps {
   activeUseCaseFilter: UseCaseId | 'ALL';
   setActiveUseCaseFilter: (u: UseCaseId | 'ALL') => void;
   streamTrigger?: number;
+  onStreamTriggerHandled?: () => void;
 }
 
 export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
@@ -50,8 +51,9 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
   activeUseCaseFilter,
   setActiveUseCaseFilter,
   streamTrigger,
+  onStreamTriggerHandled,
 }) => {
-  // Stream simulation states - if triggered from Overview page, start stream from beginning
+  // Stream simulation states - only start from 1 if streamTrigger is explicitly active
   const [streamIndex, setStreamIndex] = useState<number>(
     streamTrigger && streamTrigger > 0 ? 1 : interactions.length
   );
@@ -65,8 +67,9 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
     if (streamTrigger && streamTrigger > 0) {
       setStreamIndex(1);
       setIsPlaying(true);
+      onStreamTriggerHandled?.();
     }
-  }, [streamTrigger]);
+  }, [streamTrigger, onStreamTriggerHandled]);
 
   // Filtering states
   const [verdictFilter, setVerdictFilter] = useState<VerdictTier | 'ALL'>('ALL');
@@ -241,7 +244,7 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
           const matchingSpan = sortedSpans.find(
             (s) =>
               s.text.toLowerCase() === part.toLowerCase() ||
-              s.text.replace(/[\$,]/g, '').toLowerCase() === part.replace(/[\$,]/g, '').toLowerCase()
+              s.text.replace(/[$,]/g, '').toLowerCase() === part.replace(/[$,]/g, '').toLowerCase()
           );
 
           if (matchingSpan) {

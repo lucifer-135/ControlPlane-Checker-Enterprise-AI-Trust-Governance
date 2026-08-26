@@ -1,13 +1,15 @@
 # 🛡️ ControlPlane Checker
 ### Enterprise AI Trust, Governance & Observability Control Plane
 
+[![CI](https://github.com/lucifer-135/ControlPlane-Checker-Enterprise-AI-Trust-Governance/actions/workflows/ci.yml/badge.svg)](https://github.com/lucifer-135/ControlPlane-Checker-Enterprise-AI-Trust-Governance/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![React](https://img.shields.io/badge/React-19.0-61DAFB?logo=react&logoColor=black)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Vite](https://img.shields.io/badge/Vite-6.2-646CFF?logo=vite&logoColor=white)](https://vitejs.dev/)
-[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4.1-38B2AC?logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
+[![SQLite / libSQL](https://img.shields.io/badge/Database-SQLite_3-003B57?logo=sqlite&logoColor=white)](https://sqlite.org/)
 [![Express](https://img.shields.io/badge/Express-4.21-000000?logo=express&logoColor=white)](https://expressjs.com/)
 [![Google Gemini API](https://img.shields.io/badge/Google_Gemini-3.6_Flash-8E75B2?logo=google&logoColor=white)](https://ai.google.dev/)
+[![Tests](https://img.shields.io/badge/Tests-72_passed-brightgreen)]()
+[![Code Style](https://img.shields.io/badge/Code_Style-Prettier-ff69b4?logo=prettier&logoColor=white)](https://prettier.io/)
 
 > A high-throughput, model-agnostic enterprise governance and trust layer that scores AI interactions across **Performance**, **Cost**, and **Responsibility** in real-time, enforcing policy tiers (`ALLOW`, `BADGE`, `SOFT_CORRECT`, `BLOCK_ESCALATE`) with Gemini LLM Judge tie-breaking.
 
@@ -18,12 +20,15 @@
 2. [Solution Architecture](#-solution-architecture)
 3. [The Three Governance Lanes](#-the-three-governance-lanes)
 4. [Four-Tier Policy Enactment](#-four-tier-policy-enactment)
-5. [Key Platform Features](#-key-platform-features)
-6. [Technology Stack & Dependencies](#-technology-stack--dependencies)
-7. [Security & Privacy Posture](#-security--privacy-posture)
-8. [Getting Started & Execution Instructions](#-getting-started--execution-instructions)
-9. [Project Directory Layout](#-project-directory-layout)
-10. [License](#-license)
+5. [Database & Audit Ledger](#-database--audit-ledger)
+6. [REST API Reference](#-rest-api-reference)
+7. [Key Platform Features](#-key-platform-features)
+8. [Technology Stack & Dependencies](#-technology-stack--dependencies)
+9. [Security & Privacy Posture](#-security--privacy-posture)
+10. [Getting Started & Execution Instructions](#-getting-started--execution-instructions)
+11. [Project Directory Layout](#-project-directory-layout)
+12. [Contributing](#-contributing)
+13. [License](#-license)
 
 ---
 
@@ -163,19 +168,97 @@ flowchart TD
 
 ---
 
+## 🗄️ Database & Audit Ledger
+
+ControlPlane Checker integrates an **embedded SQLite relational ledger** (powered by `@libsql/client`) providing zero-config local persistence without requiring external database services or Docker dependencies.
+
+```mermaid
+erDiagram
+    INTERACTIONS ||--|| EVALUATIONS : "audits"
+    INTERACTIONS ||--o{ REVIEW_DECISIONS : "adjudicated by"
+    POLICY_PROFILES ||--o{ EVALUATIONS : "governs"
+
+    INTERACTIONS {
+        string id PK
+        string use_case
+        string session_id
+        int turn_number
+        string query_type
+        string prompt
+        string retrieved_context
+        string response
+        int token_total
+        int latency_ms
+        string created_at
+    }
+
+    EVALUATIONS {
+        string interaction_id PK, FK
+        float composite_risk_score
+        float session_accumulated_risk
+        string verdict
+        string overlapping_lanes
+        string performance_result
+        string cost_result
+        string responsibility_result
+    }
+
+    REVIEW_DECISIONS {
+        string id PK
+        string interaction_id FK
+        string reviewer
+        string action
+        string original_verdict
+        string new_verdict
+        string reviewed_at
+    }
+
+    POLICY_PROFILES {
+        string use_case PK
+        string name
+        string config_json
+        string updated_at
+    }
+```
+
+* **Zero Setup Required**: Automatically creates `data/controlplane.db` and seeds baseline interactions on first run.
+* **EU AI Act Article 12 Compliance**: Permanent immutable audit logging for all AI interactions and risk scores.
+* **HITL Decision Persistence**: Saves Frontline Human Review decisions across sessions.
+
+---
+
+## 🌐 REST API Reference
+
+The Express backend provides a complete RESTful interface for integration into external LLM gateways and pipelines:
+
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/api/health` | System health, database connection state, and interaction counts |
+| `GET` | `/api/interactions` | Query all audited interactions with optional `?useCase=` filtering |
+| `POST` | `/api/interactions` | Ingest new prompt/response telemetry, run 3-lane evaluation, persist to DB |
+| `GET` | `/api/reviews` | Fetch all historical Human-in-the-Loop review adjudications |
+| `POST` | `/api/reviews` | Submit and persist a compliance officer review decision |
+| `GET` | `/api/policies` | Retrieve active policy threshold configurations across use cases |
+| `PUT` | `/api/policies/:useCase` | Update and persist customized lane weights and thresholds |
+| `POST` | `/api/judge` | Autonomous Gemini 3.6 Flash LLM Judge tie-breaker evaluation |
+| `POST` | `/api/reset` | Restore database tables to baseline factory state |
+
+---
+
 ## 📦 Technology Stack & Dependencies
 
 ### Core Frameworks & Libraries
 | Component | Technology | Purpose |
 | :--- | :--- | :--- |
 | **Frontend Framework** | [React 19](https://react.dev/) + [TypeScript](https://www.typescriptlang.org/) | Type-safe UI state management and component lifecycle |
-| **Build Tooling** | [Vite 6](https://vitejs.dev/) | Sub-millisecond HMR and optimized production bundling |
+| **Database & Persistence** | [SQLite](https://sqlite.org/) via [@libsql/client](https://www.npmjs.com/package/@libsql/client) | Embedded relational audit ledger & decision persistence |
+| **Backend Server** | [Express](https://expressjs.com/) (Node.js) | REST API endpoints, Vite middleware proxy, and static file serving |
+| **AI LLM Judge** | [@google/genai](https://www.npmjs.com/package/@google/genai) | Server-side integration with Gemini 3.6 / 2.5 Flash models |
+| **Unit Testing** | [Vitest](https://vitest.dev/) (72 tests) | Comprehensive unit & database integration test coverage |
+| **Build Tooling** | [Vite 6](https://vitejs.dev/) + [esbuild](https://esbuild.github.io/) | Sub-millisecond HMR and dual client/server bundling |
 | **Styling** | [Tailwind CSS 4](https://tailwindcss.com/) | Modern design system, glassmorphism, fluid responsive layouts |
 | **Data Visualization** | [Recharts](https://recharts.org/) | Interactive responsive telemetry and metric charts |
 | **Icons & UI FX** | [Lucide React](https://lucide.dev/) + [Motion](https://motion.dev/) | Visual iconography and smooth micro-interactions |
-| **Backend Server** | [Express](https://expressjs.com/) (Node.js) | REST API endpoints, Vite middleware proxy, and static file serving |
-| **AI LLM Judge** | [@google/genai](https://www.npmjs.com/package/@google/genai) | Server-side integration with Gemini 3.6 / 2.5 Flash models |
-| **Bundler (Server)** | [esbuild](https://esbuild.github.io/) | Fast bundling of backend TypeScript into `dist/server.cjs` |
 
 ---
 
@@ -200,8 +283,8 @@ flowchart TD
 
 ### Step 1: Clone the Repository
 ```bash
-git clone https://github.com/lucifer-135/ControlPlane-Checker.git
-cd ControlPlane-Checker
+git clone https://github.com/lucifer-135/ControlPlane-Checker-Enterprise-AI-Trust-Governance.git
+cd ControlPlane-Checker-Enterprise-AI-Trust-Governance
 ```
 
 ### Step 2: Install Dependencies
@@ -244,9 +327,17 @@ npm start
 ```
 
 ### Additional Available Scripts
-- `npm run lint`: Executes TypeScript type-checking (`tsc --noEmit`).
-- `npm run preview`: Previews Vite production build locally.
-- `npm run clean`: Cleans generated `dist/` directory.
+| Script | Description |
+| :--- | :--- |
+| `npm run lint` | Runs ESLint static analysis across the codebase |
+| `npm run lint:types` | Executes TypeScript type-checking (`tsc --noEmit`) |
+| `npm test` | Runs the full Vitest unit test suite (72 tests) |
+| `npm run test:watch` | Runs tests in watch mode for TDD workflow |
+| `npm run test:coverage` | Generates test coverage report with V8 provider |
+| `npm run format` | Formats all files with Prettier |
+| `npm run format:check` | Checks formatting without modifying files (CI) |
+| `npm run preview` | Previews Vite production build locally |
+| `npm run clean` | Cleans generated `dist/` directory |
 
 ---
 
@@ -255,18 +346,26 @@ npm start
 ```
 ControlPlane-Checker/
 ├── .env.example              # Sanitized environment template
+├── .github/workflows/ci.yml  # GitHub Actions CI pipeline
 ├── .gitignore                # Comprehensive Git exclusion rules
+├── .prettierrc               # Prettier formatting configuration
+├── CONTRIBUTING.md           # Developer contribution guidelines
+├── Dockerfile                # Multi-stage production Docker build
+├── eslint.config.js          # ESLint 9 flat config (TypeScript + React)
 ├── index.html                # HTML entrypoint & typography configuration
-├── metadata.json             # AI Studio & applet metadata
 ├── package.json              # Dependencies, build scripts & metadata
 ├── tsconfig.json             # TypeScript compiler settings
 ├── vite.config.ts            # Vite & Tailwind CSS bundler configuration
+├── vitest.config.ts          # Vitest unit test configuration
 ├── server.ts                 # Express server & Gemini LLM Judge backend proxy
+├── data/                     # Embedded SQLite database storage (gitignored)
 ├── src/
 │   ├── main.tsx              # React DOM mounting
 │   ├── App.tsx               # Main application controller & tab orchestration
 │   ├── types.ts              # Domain types (Lanes, Tiers, Policies, Telemetry)
 │   ├── index.css             # Tailwind 4 theme & custom glassmorphism styles
+│   ├── server/               # Backend Database & Persistence
+│   │   └── db.ts             # SQLite / libSQL database schema, seeding & queries
 │   ├── components/           # UI Components & Tabs
 │   │   ├── AmbientShaderBackground.tsx # WebGL ambient background
 │   │   ├── DashboardTab.tsx            # Executive KPI & overview charts
@@ -283,15 +382,29 @@ ControlPlane-Checker/
 │   │   ├── baselines.ts                # Token & latency normal distributions
 │   │   └── interactions.ts             # Multi-domain synthetic interaction dataset
 │   └── lib/                  # Core Business Logic & Decision Engine
-│       ├── decisionEngine.ts           # 3-lane aggregator & session compounding
-│       ├── metrics.ts                  # Confusion matrix & PR calculations
-│       ├── policyProfiles.ts           # Default policy profile definitions
-│       └── lanes/                      # Individual Lane Evaluators
-│           ├── costLane.ts             # Z-score outlier & runaway loop detector
-│           ├── performanceLane.ts      # Grounding & Confidently Wrong detector
-│           └── responsibilityLane.ts   # PII scanner, bias & regulatory rulesets
+│       ├── __tests__/                  # Unit test suite (72 tests)
+│       │   ├── performanceLane.test.ts  # Groundedness & Confidently Wrong tests
+│       │   ├── costLane.test.ts         # Z-score & runaway loop tests
+│       │   ├── responsibilityLane.test.ts # PII, bias & regulatory tests
+│       │   ├── decisionEngine.test.ts  # Composite scoring & tier mapping tests
+│       │   ├── metrics.test.ts         # Confusion matrix & precision-recall tests
+│       │   └── db.test.ts              # SQLite database CRUD & seeding tests
+│       ├── api.ts              # Frontend API client with offline fallback
+│       ├── decisionEngine.ts   # 3-lane aggregator & session compounding
+│       ├── metrics.ts          # Confusion matrix & PR calculations
+│       ├── policyProfiles.ts   # Default policy profile definitions
+│       └── lanes/              # Individual Lane Evaluators
+│           ├── costLane.ts     # Z-score outlier & runaway loop detector
+│           ├── performanceLane.ts # Grounding & Confidently Wrong detector
+│           └── responsibilityLane.ts # PII scanner, bias & regulatory rulesets
 └── dist/                     # Production build output (generated)
 ```
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! Please read the [Contributing Guide](CONTRIBUTING.md) for development setup, coding standards, and PR guidelines.
 
 ---
 

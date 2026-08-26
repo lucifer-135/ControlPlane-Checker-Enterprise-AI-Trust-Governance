@@ -200,7 +200,7 @@ export const InteractionTesterModal: React.FC<InteractionTesterModalProps> = ({
           const matchingSpan = sortedSpans.find(
             (s) =>
               s.text.toLowerCase() === part.toLowerCase() ||
-              s.text.replace(/[\$,]/g, '').toLowerCase() === part.replace(/[\$,]/g, '').toLowerCase()
+              s.text.replace(/[$,]/g, '').toLowerCase() === part.replace(/[$,]/g, '').toLowerCase()
           );
 
           if (matchingSpan) {

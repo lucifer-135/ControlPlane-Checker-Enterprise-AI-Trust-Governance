@@ -14,6 +14,13 @@ import {
 import { SYNTHETIC_INTERACTIONS } from './data/interactions';
 import { DEFAULT_POLICY_PROFILES } from './lib/policyProfiles';
 import { evaluateDataset } from './lib/decisionEngine';
+import {
+  fetchInteractionsApi,
+  fetchReviewsApi,
+  submitReviewDecisionApi,
+  fetchPoliciesApi,
+  savePolicyProfileApi,
+} from './lib/api';
 import { Header } from './components/Header';
 import { DashboardTab } from './components/DashboardTab';
 import { LiveFeedTab } from './components/LiveFeedTab';
@@ -22,7 +29,6 @@ import { PolicyProfilesTab } from './components/PolicyProfilesTab';
 import { TrustMetricsTab } from './components/TrustMetricsTab';
 import { InteractionTesterModal } from './components/InteractionTesterModal';
 import { AmbientShaderBackground } from './components/AmbientShaderBackground';
-import { Agentation } from 'agentation';
 
 export function App() {
   // Navigation & View State - Defaults to 'dashboard' overview at start
@@ -31,7 +37,8 @@ export function App() {
   const [policyUseCase, setPolicyUseCase] = useState<UseCaseId>('support_bot');
   const [isTesterOpen, setIsTesterOpen] = useState<boolean>(false);
 
-  // Policy Profiles State
+  // Dynamic Interactions & Policy Profiles State (synced with DB)
+  const [interactionsList, setInteractionsList] = useState<SyntheticInteraction[]>(SYNTHETIC_INTERACTIONS);
   const [policyProfiles, setPolicyProfiles] = useState<Record<UseCaseId, PolicyProfile>>(
     DEFAULT_POLICY_PROFILES
   );
@@ -40,17 +47,43 @@ export function App() {
   const [reviewDecisions, setReviewDecisions] = useState<ReviewDecision[]>([]);
   const [selectedReviewId, setSelectedReviewId] = useState<string | null>(null);
 
-  // Real-time evaluation of the synthetic interactions dataset against active policy profiles
-  const { evaluations } = useMemo(() => {
-    return evaluateDataset(SYNTHETIC_INTERACTIONS, policyProfiles);
-  }, [policyProfiles]);
+  // Load from DB on mount
+  useEffect(() => {
+    async function loadDataFromDb() {
+      try {
+        const [fetchedInteractions, fetchedReviews, fetchedPolicies] = await Promise.all([
+          fetchInteractionsApi(),
+          fetchReviewsApi(),
+          fetchPoliciesApi(),
+        ]);
+        if (fetchedInteractions.interactions && fetchedInteractions.interactions.length > 0) {
+          setInteractionsList(fetchedInteractions.interactions);
+        }
+        if (fetchedReviews && fetchedReviews.length > 0) {
+          setReviewDecisions(fetchedReviews);
+        }
+        if (fetchedPolicies && Object.keys(fetchedPolicies).length > 0) {
+          setPolicyProfiles(fetchedPolicies);
+        }
+      } catch (err) {
+        console.warn('Initial DB sync completed with local fallback:', err);
+      }
+    }
+    loadDataFromDb();
+  }, []);
 
-  // Update a single policy profile
+  // Real-time evaluation of the interactions dataset against active policy profiles
+  const { evaluations } = useMemo(() => {
+    return evaluateDataset(interactionsList, policyProfiles);
+  }, [interactionsList, policyProfiles]);
+
+  // Update a single policy profile (persisting to DB)
   const handleUpdateProfile = (useCase: UseCaseId, updated: PolicyProfile) => {
     setPolicyProfiles((prev) => ({
       ...prev,
       [useCase]: updated,
     }));
+    savePolicyProfileApi(useCase, updated);
   };
 
   // Stream trigger counter for starting live streaming simulation
@@ -73,8 +106,9 @@ export function App() {
   // Update Block+Escalate threshold (from Trust Metrics Dial)
   const handleUpdateThreshold = (targetUseCase: UseCaseId | 'ALL', newThreshold: number) => {
     setPolicyProfiles((prev) => {
+      let updated: Record<UseCaseId, PolicyProfile>;
       if (targetUseCase === 'ALL') {
-        return {
+        updated = {
           support_bot: {
             ...prev.support_bot,
             thresholds: { ...prev.support_bot.thresholds, block_escalate: newThreshold },
@@ -88,23 +122,34 @@ export function App() {
             thresholds: { ...prev.decision_support.thresholds, block_escalate: newThreshold },
           },
         };
-      }
-      return {
-        ...prev,
-        [targetUseCase]: {
+        savePolicyProfileApi('support_bot', updated.support_bot);
+        savePolicyProfileApi('internal_copilot', updated.internal_copilot);
+        savePolicyProfileApi('decision_support', updated.decision_support);
+      } else {
+        const singleUpdated = {
           ...prev[targetUseCase],
           thresholds: { ...prev[targetUseCase].thresholds, block_escalate: newThreshold },
-        },
-      };
+        };
+        updated = {
+          ...prev,
+          [targetUseCase]: singleUpdated,
+        };
+        savePolicyProfileApi(targetUseCase, singleUpdated);
+      }
+      return updated;
     });
   };
 
   const handleResetProfiles = () => {
     setPolicyProfiles(DEFAULT_POLICY_PROFILES);
+    savePolicyProfileApi('support_bot', DEFAULT_POLICY_PROFILES.support_bot);
+    savePolicyProfileApi('internal_copilot', DEFAULT_POLICY_PROFILES.internal_copilot);
+    savePolicyProfileApi('decision_support', DEFAULT_POLICY_PROFILES.decision_support);
   };
 
   const handleReviewDecision = (decision: ReviewDecision) => {
     setReviewDecisions((prev) => [decision, ...prev]);
+    submitReviewDecisionApi(decision);
   };
 
   // Call Gemini 3.6 Flash LLM Judge via server endpoint
@@ -154,10 +199,10 @@ export function App() {
   // Count pending review items
   const reviewQueueCount = useMemo(() => {
     const reviewedIds = new Set(reviewDecisions.map((d) => d.interaction_id));
-    return SYNTHETIC_INTERACTIONS.filter(
+    return interactionsList.filter(
       (i) => evaluations[i.id]?.verdict === 'BLOCK_ESCALATE' && !reviewedIds.has(i.id)
     ).length;
-  }, [evaluations, reviewDecisions]);
+  }, [interactionsList, evaluations, reviewDecisions]);
 
   // Prevent vertical scroll jumping when switching sections
   useEffect(() => {
@@ -184,7 +229,7 @@ export function App() {
         <div key={activeTab} className="animate-in fade-in duration-150">
           {activeTab === 'dashboard' && (
             <DashboardTab
-              interactions={SYNTHETIC_INTERACTIONS}
+              interactions={interactionsList}
               evaluations={evaluations}
               policyProfiles={policyProfiles}
               reviewDecisions={reviewDecisions}
@@ -195,18 +240,19 @@ export function App() {
 
           {activeTab === 'feed' && (
             <LiveFeedTab
-              interactions={SYNTHETIC_INTERACTIONS}
+              interactions={interactionsList}
               evaluations={evaluations}
               onRunJudge={handleRunJudge}
               activeUseCaseFilter={activeUseCase}
               setActiveUseCaseFilter={setActiveUseCase}
               streamTrigger={streamTrigger}
+              onStreamTriggerHandled={() => setStreamTrigger(0)}
             />
           )}
 
           {activeTab === 'review' && (
             <ReviewQueueTab
-              interactions={SYNTHETIC_INTERACTIONS}
+              interactions={interactionsList}
               evaluations={evaluations}
               reviewDecisions={reviewDecisions}
               onReviewDecision={handleReviewDecision}
@@ -227,7 +273,7 @@ export function App() {
 
           {activeTab === 'metrics' && (
             <TrustMetricsTab
-              interactions={SYNTHETIC_INTERACTIONS}
+              interactions={interactionsList}
               evaluations={evaluations}
               policyProfiles={policyProfiles}
               onUpdateThreshold={handleUpdateThreshold}
@@ -288,8 +334,7 @@ export function App() {
         </div>
       </footer>
 
-      {/* Visual Feedback Toolbar for AI Coding Agents */}
-      <Agentation />
+
     </div>
   );
 }

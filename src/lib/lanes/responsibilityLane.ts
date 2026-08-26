@@ -39,7 +39,7 @@ const PII_PATTERNS: { type: DetectedEntity['type']; regex: RegExp; label: string
   },
   {
     type: 'ACCOUNT_NO',
-    regex: /\b(?:DOB|Date of Birth)[\s:]*([0-9]{1,2}[\/-][0-9]{1,2}[\/-][0-9]{2,4})\b/gi,
+    regex: /\b(?:DOB|Date of Birth)[\s:]*([0-9]{1,2}[/-][0-9]{1,2}[/-][0-9]{2,4})\b/gi,
     label: 'Date of Birth (DOB)',
   },
 ];

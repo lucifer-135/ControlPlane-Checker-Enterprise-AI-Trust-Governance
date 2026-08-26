@@ -170,7 +170,7 @@ export const AmbientShaderBackground: React.FC = React.memo(() => {
     const uTimeLoc = gl.getUniformLocation(program, 'u_time');
     const uResLoc = gl.getUniformLocation(program, 'u_resolution');
 
-    let startTime = performance.now();
+    const startTime = performance.now();
 
     // Under reduced-motion, render a single static frame and stop.
     if (prefersReducedMotion) {

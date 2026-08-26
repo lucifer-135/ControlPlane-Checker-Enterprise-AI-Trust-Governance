@@ -1,8 +1,22 @@
-import express from "express";
-import path from "path";
-import { createServer as createViteServer } from "vite";
-import { GoogleGenAI, Type } from "@google/genai";
-import dotenv from "dotenv";
+import express from 'express';
+import path from 'path';
+import { createServer as createViteServer } from 'vite';
+import { GoogleGenAI } from '@google/genai';
+import dotenv from 'dotenv';
+import {
+  initDb,
+  seedIfEmpty,
+  getAllInteractions,
+  insertInteractionWithEvaluation,
+  getReviewDecisions,
+  insertReviewDecision,
+  getPolicyProfiles,
+  updatePolicyProfile,
+  resetDatabase,
+  getDatabaseStats,
+} from './src/server/db';
+import { DEFAULT_POLICY_PROFILES } from './src/lib/policyProfiles';
+import { SyntheticInteraction, UseCaseId } from './src/types';
 
 dotenv.config();
 
@@ -19,7 +33,7 @@ function getGeminiClient(): GoogleGenAI | null {
       apiKey: process.env.GEMINI_API_KEY,
       httpOptions: {
         headers: {
-          "User-Agent": "aistudio-build",
+          'User-Agent': 'aistudio-build',
         },
       },
     });
@@ -27,17 +41,137 @@ function getGeminiClient(): GoogleGenAI | null {
   return genAIClient;
 }
 
-// Health check endpoint
-app.get("/api/health", (_req, res) => {
-  res.json({
-    status: "ok",
-    hasApiKey: Boolean(process.env.GEMINI_API_KEY),
-    timestamp: new Date().toISOString(),
-  });
+// 1. Health check & DB statistics endpoint
+app.get('/api/health', async (_req, res) => {
+  try {
+    const stats = await getDatabaseStats();
+    res.json({
+      status: 'ok',
+      hasApiKey: Boolean(process.env.GEMINI_API_KEY),
+      database: 'connected (SQLite / libSQL)',
+      stats,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      status: 'degraded',
+      error: error.message,
+      timestamp: new Date().toISOString(),
+    });
+  }
 });
 
-// Gemini LLM Judge endpoint for ambiguous groundedness / tie-breaker evaluation
-app.post("/api/judge", async (req, res) => {
+// 2. Interactions & Telemetry endpoints
+app.get('/api/interactions', async (req, res) => {
+  try {
+    const useCase = req.query.useCase as string | undefined;
+    const data = await getAllInteractions(undefined, useCase);
+    res.json(data);
+  } catch (error: any) {
+    console.error('Error fetching interactions:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/interactions', async (req, res) => {
+  try {
+    const payload = req.body;
+    const policies = await getPolicyProfiles();
+    const useCase: UseCaseId = payload.use_case || 'support_bot';
+    const policy = policies[useCase] || DEFAULT_POLICY_PROFILES[useCase];
+
+    const interaction: SyntheticInteraction = {
+      id: payload.id || `custom-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      use_case: useCase,
+      session_id: payload.session_id || `session-${Date.now()}`,
+      turn_number: payload.turn_number || 1,
+      query_type: payload.query_type || 'custom_eval',
+      prompt: payload.prompt || '',
+      retrieved_context: payload.retrieved_context || null,
+      response: payload.response || '',
+      token_count: payload.token_count || {
+        prompt: Math.round((payload.prompt?.length || 0) / 4),
+        completion: Math.round((payload.response?.length || 0) / 4),
+        total: Math.round(((payload.prompt?.length || 0) + (payload.response?.length || 0)) / 4),
+      },
+      latency_ms: payload.latency_ms || 280,
+      tool_calls_count: payload.tool_calls_count || 0,
+      ground_truth_labels: payload.ground_truth_labels || ['custom_test'],
+      metadata: payload.metadata || {
+        created_at: new Date().toISOString(),
+        model_name: 'gemini-3.6-flash',
+      },
+    };
+
+    const evaluation = await insertInteractionWithEvaluation(interaction, policy);
+    res.status(201).json({ interaction, evaluation });
+  } catch (error: any) {
+    console.error('Error creating interaction:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 3. Human Review Adjudication endpoints
+app.get('/api/reviews', async (_req, res) => {
+  try {
+    const reviews = await getReviewDecisions();
+    res.json(reviews);
+  } catch (error: any) {
+    console.error('Error fetching reviews:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/reviews', async (req, res) => {
+  try {
+    const decision = req.body;
+    if (!decision.id || !decision.interaction_id || !decision.action) {
+      return res.status(400).json({ error: 'Missing required review decision fields' });
+    }
+    await insertReviewDecision(decision);
+    res.status(201).json({ success: true, decision });
+  } catch (error: any) {
+    console.error('Error saving review decision:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 4. Governance Policy Profile endpoints
+app.get('/api/policies', async (_req, res) => {
+  try {
+    const policies = await getPolicyProfiles();
+    res.json(policies);
+  } catch (error: any) {
+    console.error('Error fetching policy profiles:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/policies/:useCase', async (req, res) => {
+  try {
+    const useCase = req.params.useCase as UseCaseId;
+    const profile = req.body;
+    await updatePolicyProfile(useCase, profile);
+    res.json({ success: true, useCase, profile });
+  } catch (error: any) {
+    console.error('Error updating policy profile:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 5. Database Reset Endpoint
+app.post('/api/reset', async (_req, res) => {
+  try {
+    await resetDatabase();
+    res.json({ success: true, message: 'Database reset to baseline state.' });
+  } catch (error: any) {
+    console.error('Error resetting database:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 6. Gemini LLM Judge endpoint
+app.post('/api/judge', async (req, res) => {
   try {
     const prompt = req.body.prompt || '';
     const retrievedContext = req.body.retrievedContext || req.body.context || '';
@@ -53,8 +187,9 @@ app.post("/api/judge", async (req, res) => {
         groundednessScore: 0.42,
         certaintyScore: 0.88,
         certaintySupportMismatch: 0.75,
-        verdict: "CONFIDENTLY_WRONG",
-        reasoning: "Heuristic evaluation (No GEMINI_API_KEY configured): The response makes definitive factual claims that contradict or are absent from the provided retrieved context.",
+        verdict: 'CONFIDENTLY_WRONG',
+        reasoning:
+          'Heuristic evaluation (No GEMINI_API_KEY configured): The response makes definitive factual claims that contradict or are absent from the provided retrieved context.',
         triggeringSpans: [claim || responseText.slice(0, 80)],
       });
     }
@@ -73,14 +208,19 @@ Return ONLY a JSON object adhering to this schema:
   "triggeringSpans": string[] (exact phrases in response that represent unsupported or exaggerated claims)
 }`;
 
-    const userContent = `Use Case: ${useCase || "general"}
+    const userContent = `Use Case: ${useCase || 'general'}
 User Prompt: ${prompt}
-Retrieved Context: ${retrievedContext || "[No context provided - verify general world knowledge and unverified claim bounds]"}
+Retrieved Context: ${retrievedContext || '[No context provided - verify general world knowledge and unverified claim bounds]'}
 AI Response: ${responseText}
-${claim ? `Specific Claim to Examine: "${claim}"` : ""}`;
+${claim ? `Specific Claim to Examine: "${claim}"` : ''}`;
 
-    let responseTextRaw = "{}";
-    const modelsToTry = ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.0-flash"];
+    let responseTextRaw = '{}';
+    const modelsToTry = [
+      'gemini-3.6-flash',
+      'gemini-3.5-flash',
+      'gemini-2.5-flash',
+      'gemini-2.0-flash',
+    ];
     let succeeded = false;
 
     for (const model of modelsToTry) {
@@ -90,7 +230,7 @@ ${claim ? `Specific Claim to Examine: "${claim}"` : ""}`;
           contents: userContent,
           config: {
             systemInstruction: systemPrompt,
-            responseMimeType: "application/json",
+            responseMimeType: 'application/json',
           },
         });
         if (response.text) {
@@ -113,47 +253,61 @@ ${claim ? `Specific Claim to Examine: "${claim}"` : ""}`;
 
       return res.json({
         isLiveLLM: false,
-        groundednessScore: isConfidentlyWrong ? 0.15 : 0.40,
-        certaintyScore: isConfidentlyWrong ? 0.95 : 0.70,
-        certaintySupportMismatch: isConfidentlyWrong ? 0.80 : 0.45,
-        verdict: isConfidentlyWrong ? "CONFIDENTLY_WRONG" : "UNGROUNDED",
-        reasoning: "Autonomous Governance Evaluator (High-demand fallback): Evaluated semantic grounding and detected assertion bounds mismatch relative to retrieved context.",
+        groundednessScore: isConfidentlyWrong ? 0.15 : 0.4,
+        certaintyScore: isConfidentlyWrong ? 0.95 : 0.7,
+        certaintySupportMismatch: isConfidentlyWrong ? 0.8 : 0.45,
+        verdict: isConfidentlyWrong ? 'CONFIDENTLY_WRONG' : 'UNGROUNDED',
+        reasoning:
+          'Autonomous Governance Evaluator (High-demand fallback): Evaluated semantic grounding and detected assertion bounds mismatch relative to retrieved context.',
         triggeringSpans: [claim || responseText.slice(0, 80)],
       });
     }
 
-    const parsed = JSON.parse(responseTextRaw || "{}");
+    const parsed = JSON.parse(responseTextRaw || '{}');
     return res.json({
       isLiveLLM: true,
       ...parsed,
-      verdict: (parsed.verdict || "SUPPORTED").toUpperCase(),
+      verdict: (parsed.verdict || 'SUPPORTED').toUpperCase(),
     });
   } catch (error: any) {
-    console.error("Gemini Judge error:", error);
+    console.error('Gemini Judge error:', error);
     return res.status(500).json({
-      error: error.message || "Failed to execute judge evaluation",
+      error: error.message || 'Failed to execute judge evaluation',
     });
   }
 });
 
 async function startServer() {
+  // Initialize and auto-seed SQLite database
+  try {
+    await initDb();
+    const seedResult = await seedIfEmpty();
+    if (seedResult.seeded) {
+      console.warn(`[ControlPlane Database] Seeded ${seedResult.count} interactions into SQLite ledger.`);
+    } else {
+      console.warn(`[ControlPlane Database] Connected. Found ${seedResult.count} existing interactions.`);
+    }
+  } catch (dbErr: any) {
+    console.error('[ControlPlane Database] Initialization warning:', dbErr.message);
+  }
+
   // Vite middleware for development
-  if (process.env.NODE_ENV !== "production") {
+  if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },
-      appType: "spa",
+      appType: 'spa',
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), "dist");
+    const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
-    app.get("*", (_req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
+    app.get('*', (_req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'));
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`ControlPlane Checker Server running on http://0.0.0.0:${PORT}`);
+  app.listen(PORT, '0.0.0.0', () => {
+    console.warn(`ControlPlane Checker Server running on http://0.0.0.0:${PORT}`);
   });
 }
 

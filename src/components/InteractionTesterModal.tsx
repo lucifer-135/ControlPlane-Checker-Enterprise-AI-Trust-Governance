@@ -15,7 +15,7 @@ import { evaluateInteraction } from '../lib/decisionEngine';
 import { VerdictBadge } from './VerdictBadge';
 import { WavyDots } from './WavyDots';
 import { GeminiJudgeResultCard } from './GeminiJudgeResultCard';
-import { X, Sparkles, Zap, Shield, Coins, Play, Layers } from 'lucide-react';
+import { X, Sparkles, Zap, Shield, Coins, Play, Layers, RotateCcw } from 'lucide-react';
 
 interface InteractionTesterModalProps {
   isOpen: boolean;
@@ -93,6 +93,17 @@ export const InteractionTesterModal: React.FC<InteractionTesterModalProps> = ({
       setTotalTokens(4800);
       setLatencyMs(7800);
     }
+    setEvaluationResult(null);
+    setJudgeResult(null);
+  };
+
+  const handleReset = () => {
+    setUseCase('support_bot');
+    setPrompt('');
+    setContext('');
+    setResponse('');
+    setTotalTokens(250);
+    setLatencyMs(350);
     setEvaluationResult(null);
     setJudgeResult(null);
   };
@@ -268,31 +279,42 @@ export const InteractionTesterModal: React.FC<InteractionTesterModalProps> = ({
 
         <div className="p-6 space-y-6 max-h-[80vh] overflow-y-auto">
           {/* Preset Buttons */}
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            <span className="text-[#667085] font-medium text-[11px] mr-1">Presets:</span>
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[#667085] font-medium text-[11px] mr-1">Presets:</span>
+              <button
+                onClick={() => handleLoadPreset('overlap')}
+                className="px-3.5 py-1.5 rounded-xl glass-btn-secondary text-[#344054] hover:text-[#101828] transition-all cursor-pointer font-medium"
+              >
+                PII + Redlining Overlap
+              </button>
+              <button
+                onClick={() => handleLoadPreset('hallucination')}
+                className="px-3.5 py-1.5 rounded-xl glass-btn-secondary text-[#344054] hover:text-[#101828] transition-all cursor-pointer font-medium"
+              >
+                Confidently Wrong
+              </button>
+              <button
+                onClick={() => handleLoadPreset('cost')}
+                className="px-3.5 py-1.5 rounded-xl glass-btn-secondary text-[#344054] hover:text-[#101828] transition-all cursor-pointer font-medium"
+              >
+                Runaway Loop (Cost)
+              </button>
+              <button
+                onClick={() => handleLoadPreset('clean')}
+                className="px-3.5 py-1.5 rounded-xl glass-btn-secondary text-[#344054] hover:text-[#101828] transition-all cursor-pointer font-medium"
+              >
+                Clean Grounded
+              </button>
+            </div>
+
             <button
-              onClick={() => handleLoadPreset('overlap')}
-              className="px-3.5 py-1.5 rounded-xl glass-btn-secondary text-[#344054] hover:text-[#101828] transition-all cursor-pointer font-medium"
+              onClick={handleReset}
+              className="px-3 py-1.5 rounded-xl text-[11px] font-semibold text-[#667085] hover:text-rose-600 hover:bg-rose-50 border border-slate-200 hover:border-rose-200 transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
+              title="Reset all inputs and evaluation cards"
             >
-              PII + Redlining Overlap
-            </button>
-            <button
-              onClick={() => handleLoadPreset('hallucination')}
-              className="px-3.5 py-1.5 rounded-xl glass-btn-secondary text-[#344054] hover:text-[#101828] transition-all cursor-pointer font-medium"
-            >
-              Confidently Wrong
-            </button>
-            <button
-              onClick={() => handleLoadPreset('cost')}
-              className="px-3.5 py-1.5 rounded-xl glass-btn-secondary text-[#344054] hover:text-[#101828] transition-all cursor-pointer font-medium"
-            >
-              Runaway Loop (Cost)
-            </button>
-            <button
-              onClick={() => handleLoadPreset('clean')}
-              className="px-3.5 py-1.5 rounded-xl glass-btn-secondary text-[#344054] hover:text-[#101828] transition-all cursor-pointer font-medium"
-            >
-              Clean Grounded
+              <RotateCcw className="h-3 w-3" />
+              <span>Reset All</span>
             </button>
           </div>
 
@@ -347,6 +369,7 @@ export const InteractionTesterModal: React.FC<InteractionTesterModalProps> = ({
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
                 rows={2}
+                placeholder="Type the end-user query or prompt..."
                 className="w-full glass-input rounded-xl p-3 text-xs text-[#101828] placeholder:text-[#98A2B3] font-sans"
               />
             </div>
@@ -360,6 +383,7 @@ export const InteractionTesterModal: React.FC<InteractionTesterModalProps> = ({
                 value={context}
                 onChange={(e) => setContext(e.target.value)}
                 rows={2}
+                placeholder="Paste the reference knowledge base context, policy document, or leave blank..."
                 className="w-full glass-input rounded-xl p-3 text-xs text-[#101828] placeholder:text-[#98A2B3] font-sans italic"
               />
             </div>
@@ -373,6 +397,7 @@ export const InteractionTesterModal: React.FC<InteractionTesterModalProps> = ({
                 value={response}
                 onChange={(e) => setResponse(e.target.value)}
                 rows={3}
+                placeholder="Paste or type the AI response text to evaluate..."
                 className="w-full glass-input rounded-xl p-3 text-xs text-[#101828] placeholder:text-[#98A2B3] font-mono"
               />
             </div>
@@ -381,24 +406,35 @@ export const InteractionTesterModal: React.FC<InteractionTesterModalProps> = ({
           {/* Action Buttons */}
           <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
             <button
-              onClick={handleEvaluate}
-              className="inline-flex items-center space-x-2 px-6 py-2.5 rounded-xl text-xs font-semibold glass-btn-primary text-white transition-all cursor-pointer shadow-md"
+              onClick={handleReset}
+              className="inline-flex items-center space-x-1.5 px-4 py-2.5 rounded-xl text-xs font-medium text-[#475467] hover:text-[#101828] hover:bg-slate-200/60 border border-slate-200 bg-white/70 transition-all cursor-pointer shadow-xs"
+              title="Reset all inputs and evaluation cards"
             >
-              <Play className="h-3.5 w-3.5 fill-current" />
-              <span>Evaluate with ControlPlane Lanes</span>
+              <RotateCcw className="h-3.5 w-3.5" />
+              <span>Reset Inputs</span>
             </button>
 
-            <button
-              onClick={handleRunLiveJudge}
-              disabled={isLoadingJudge}
-              className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl text-xs font-medium glass-btn-secondary text-[#344054] hover:text-[#101828] transition-all cursor-pointer disabled:opacity-50"
-            >
-              <Sparkles className="h-3.5 w-3.5 text-[#4F46E5]" />
-              <span>
-                {isLoadingJudge ? 'Executing Gemini Judge' : 'Run Real-Time Gemini Judge'}
-              </span>
-              {isLoadingJudge && <WavyDots color="bg-[#4F46E5]" size="xs" className="ml-1" />}
-            </button>
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                onClick={handleEvaluate}
+                className="inline-flex items-center space-x-2 px-6 py-2.5 rounded-xl text-xs font-semibold glass-btn-primary text-white transition-all cursor-pointer shadow-md"
+              >
+                <Play className="h-3.5 w-3.5 fill-current" />
+                <span>Evaluate with ControlPlane Lanes</span>
+              </button>
+
+              <button
+                onClick={handleRunLiveJudge}
+                disabled={isLoadingJudge}
+                className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl text-xs font-medium glass-btn-secondary text-[#344054] hover:text-[#101828] transition-all cursor-pointer disabled:opacity-50"
+              >
+                <Sparkles className="h-3.5 w-3.5 text-[#4F46E5]" />
+                <span>
+                  {isLoadingJudge ? 'Executing Gemini Judge' : 'Run Real-Time Gemini Judge'}
+                </span>
+                {isLoadingJudge && <WavyDots color="bg-[#4F46E5]" size="xs" className="ml-1" />}
+              </button>
+            </div>
           </div>
 
           {/* Gemini Live Judge Loading State */}

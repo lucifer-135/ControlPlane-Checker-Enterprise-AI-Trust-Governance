@@ -8,7 +8,13 @@ export type UseCaseId = 'support_bot' | 'internal_copilot' | 'decision_support';
 export type VerdictTier = 'ALLOW' | 'BADGE' | 'SOFT_CORRECT' | 'BLOCK_ESCALATE';
 
 export type GroundTruthLabel =
-  'clean' | 'hallucinated' | 'pii_leaking' | 'biased_toxic' | 'cost_outlier' | 'custom_test';
+  | 'clean'
+  | 'hallucinated'
+  | 'pii_leaking'
+  | 'biased_toxic'
+  | 'cost_outlier'
+  | 'custom_test'
+  | 'sandbox_test';
 
 export type GeographyRuleset =
   'EU_AI_ACT_STANDARD' | 'US_HIPAA_FINRA' | 'INDIA_DPDP_ACT' | 'INTERNAL_IP_SECURITY';

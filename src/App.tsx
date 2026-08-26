@@ -26,6 +26,7 @@ import {
 import { Header } from './components/Header';
 import { DashboardTab } from './components/DashboardTab';
 import { LiveFeedTab } from './components/LiveFeedTab';
+import { SandboxTab } from './components/SandboxTab';
 import { ReviewQueueTab } from './components/ReviewQueueTab';
 import { PolicyProfilesTab } from './components/PolicyProfilesTab';
 import { TrustMetricsTab } from './components/TrustMetricsTab';
@@ -35,7 +36,7 @@ import { AmbientShaderBackground } from './components/AmbientShaderBackground';
 export function App() {
   // Navigation & View State - Defaults to 'dashboard' overview at start
   const [activeTab, setActiveTab] = useState<
-    'dashboard' | 'feed' | 'review' | 'policy' | 'metrics'
+    'dashboard' | 'feed' | 'sandbox' | 'review' | 'policy' | 'metrics'
   >('dashboard');
   const [activeUseCase, setActiveUseCase] = useState<UseCaseId | 'ALL'>('ALL');
   const [policyUseCase, setPolicyUseCase] = useState<UseCaseId>('support_bot');
@@ -94,7 +95,7 @@ export function App() {
   const [streamTrigger, setStreamTrigger] = useState<number>(0);
 
   const handleNavigateTab = (
-    tab: 'dashboard' | 'feed' | 'review' | 'policy' | 'metrics',
+    tab: 'dashboard' | 'feed' | 'sandbox' | 'review' | 'policy' | 'metrics',
     targetId?: string,
     startLiveStream?: boolean,
   ) => {
@@ -105,6 +106,11 @@ export function App() {
     if (tab === 'feed' && startLiveStream) {
       setStreamTrigger((prev) => prev + 1);
     }
+  };
+
+  const handleInteractionCreated = (newInteraction: SyntheticInteraction) => {
+    setInteractionsList((prev) => [newInteraction, ...prev]);
+    setStreamTrigger((prev) => prev + 1);
   };
 
   // Update Block+Escalate threshold (from Trust Metrics Dial)
@@ -233,7 +239,7 @@ export function App() {
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         reviewQueueCount={reviewQueueCount}
-        onOpenTester={() => setIsTesterOpen(true)}
+        onOpenTester={() => setActiveTab('sandbox')}
         hasApiKey={true}
         activeProfileName={policyProfiles[policyUseCase]?.name || policyUseCase}
       />
@@ -248,7 +254,7 @@ export function App() {
               policyProfiles={policyProfiles}
               reviewDecisions={reviewDecisions}
               onNavigateTab={handleNavigateTab}
-              onOpenTester={() => setIsTesterOpen(true)}
+              onOpenTester={() => setActiveTab('sandbox')}
             />
           )}
 
@@ -261,6 +267,14 @@ export function App() {
               setActiveUseCaseFilter={setActiveUseCase}
               streamTrigger={streamTrigger}
               onStreamTriggerHandled={() => setStreamTrigger(0)}
+            />
+          )}
+
+          {activeTab === 'sandbox' && (
+            <SandboxTab
+              policyProfiles={policyProfiles}
+              onRunJudge={handleRunJudge}
+              onInteractionCreated={handleInteractionCreated}
             />
           )}
 

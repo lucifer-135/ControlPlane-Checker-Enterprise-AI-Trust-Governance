@@ -26,6 +26,7 @@ import {
   Gauge,
   AlertTriangle,
   ArrowUpRight,
+  FlaskConical,
 } from 'lucide-react';
 
 interface DashboardTabProps {
@@ -34,7 +35,7 @@ interface DashboardTabProps {
   policyProfiles: Record<UseCaseId, PolicyProfile>;
   reviewDecisions: ReviewDecision[];
   onNavigateTab: (
-    tab: 'dashboard' | 'feed' | 'review' | 'policy' | 'metrics',
+    tab: 'dashboard' | 'feed' | 'sandbox' | 'review' | 'policy' | 'metrics',
     targetId?: string,
     startLiveStream?: boolean,
   ) => void;
@@ -257,6 +258,36 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
 
       {/* 3. Governance Modules Section */}
       <section className="flex flex-col gap-5">
+        {/* Interactive Sandbox Feature Banner */}
+        <div className="glass-panel bg-gradient-to-r from-indigo-50/80 via-white/80 to-purple-50/80 border border-indigo-100/90 rounded-2xl p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
+          <div className="flex items-center gap-3.5">
+            <div className="h-11 w-11 rounded-xl bg-[#4F46E5] text-white flex items-center justify-center shadow-md shrink-0">
+              <FlaskConical className="h-5 w-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-semibold text-[#101828]">
+                  Interactive Governance Sandbox &amp; Playground
+                </h3>
+                <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-[#EEF0FE] text-[#4F46E5] border border-[#D9D6FE]">
+                  New Tab
+                </span>
+              </div>
+              <p className="text-xs text-[#667085] mt-0.5 leading-relaxed">
+                Test any custom prompt, context, or AI response with real-time 3-lane risk scoring
+                and Gemini 3.6 LLM Judge arbitration.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => onNavigateTab('sandbox')}
+            className="glass-btn-primary text-white px-4 py-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer shadow-sm hover:scale-[1.02] active:scale-[0.98] transition-all whitespace-nowrap"
+          >
+            <Play className="h-3.5 w-3.5 fill-current" />
+            <span>Launch Sandbox Playground</span>
+          </button>
+        </div>
+
         <div className="flex justify-between items-end border-b border-slate-200 pb-3">
           <h2 className="font-headline text-lg text-[#101828] font-semibold tracking-tight flex items-center gap-2.5">
             <span className="w-2 h-2 rounded-full bg-[#2E90FA] shadow-[0_0_8px_#2E90FA]"></span>

@@ -531,7 +531,12 @@ export const InteractionTesterModal: React.FC<InteractionTesterModalProps> = ({
                       <Shield className="h-3.5 w-3.5 mr-1" /> Responsibility
                     </span>
                     <span className="font-mono tnum">
-                      {evaluationResult.responsibility.pii_detected.length} PII
+                      {Array.isArray(evaluationResult.responsibility.pii_detected)
+                        ? evaluationResult.responsibility.pii_detected.length
+                        : evaluationResult.responsibility.pii_detected
+                          ? 1
+                          : 0}{' '}
+                      PII
                     </span>
                   </div>
                   <p className="text-[#667085] text-[11px] font-sans">
@@ -549,29 +554,43 @@ export const InteractionTesterModal: React.FC<InteractionTesterModalProps> = ({
                   {renderHighlightedResponse(response, evaluationResult)}
                 </div>
 
-                {(evaluationResult.performance.triggering_spans.length > 0 ||
-                  evaluationResult.responsibility.triggering_spans.length > 0) && (
+                {(evaluationResult.performance.triggering_spans?.length > 0 ||
+                  evaluationResult.responsibility.triggering_spans?.length > 0) && (
                   <div className="pt-2 border-t border-slate-200 flex flex-wrap gap-1.5">
-                    {evaluationResult.performance.triggering_spans.map((s, idx) => (
-                      <span
-                        key={`perf-${idx}`}
-                        className="px-2 py-0.5 rounded-lg bg-[#FEF3F2] text-[#B42318] border border-[#FECDCA] text-[10px] font-medium shadow-xs"
-                      >
-                        Claim Mismatch: "{s.text}"
-                      </span>
-                    ))}
-                    {evaluationResult.responsibility.triggering_spans.map((s, idx) => (
-                      <span
-                        key={`resp-${idx}`}
-                        className={`px-2 py-0.5 rounded-lg text-[10px] font-medium border shadow-xs ${
-                          s.type === 'pii'
-                            ? 'bg-[#FFFAEB] text-[#B54708] border-[#FEDF89]'
-                            : 'bg-[#F4F3FF] text-[#6941C6] border-[#D9D6FE]'
-                        }`}
-                      >
-                        {s.type.toUpperCase()}: "{s.text}"
-                      </span>
-                    ))}
+                    {Array.isArray(evaluationResult.performance.triggering_spans) &&
+                      evaluationResult.performance.triggering_spans.map((s: any, idx: number) => {
+                        const text = typeof s === 'string' ? s : s?.text || '';
+                        if (!text) return null;
+                        return (
+                          <span
+                            key={`perf-${idx}`}
+                            className="px-2 py-0.5 rounded-lg bg-[#FEF3F2] text-[#B42318] border border-[#FECDCA] text-[10px] font-medium shadow-xs"
+                          >
+                            Claim Mismatch: "{text}"
+                          </span>
+                        );
+                      })}
+                    {Array.isArray(evaluationResult.responsibility.triggering_spans) &&
+                      evaluationResult.responsibility.triggering_spans.map(
+                        (s: any, idx: number) => {
+                          const text = typeof s === 'string' ? s : s?.text || '';
+                          const typeLabel =
+                            typeof s === 'object' && s?.type ? s.type.toUpperCase() : 'ALERT';
+                          if (!text) return null;
+                          return (
+                            <span
+                              key={`resp-${idx}`}
+                              className={`px-2 py-0.5 rounded-lg text-[10px] font-medium border shadow-xs ${
+                                s?.type === 'pii'
+                                  ? 'bg-[#FFFAEB] text-[#B54708] border-[#FEDF89]'
+                                  : 'bg-[#F4F3FF] text-[#6941C6] border-[#D9D6FE]'
+                              }`}
+                            >
+                              {typeLabel}: "{text}"
+                            </span>
+                          );
+                        },
+                      )}
                   </div>
                 )}
               </div>

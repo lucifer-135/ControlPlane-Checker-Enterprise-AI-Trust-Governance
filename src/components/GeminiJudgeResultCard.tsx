@@ -14,27 +14,37 @@ import {
 } from 'lucide-react';
 
 export interface JudgeData {
-  verdict: string;
-  reasoning: string;
+  verdict?: string;
+  reasoning?: string;
   groundednessScore?: number;
+  groundedness_score?: number;
   certaintyScore?: number;
+  certainty_score?: number;
   certaintySupportMismatch?: number;
-  triggeringSpans?: string[];
+  certainty_support_mismatch?: number;
+  triggeringSpans?: (string | { text: string; [key: string]: any })[];
+  triggering_spans?: (string | { text: string; [key: string]: any })[];
   isLiveLLM?: boolean;
+  explanation?: string;
+  error?: string;
 }
 
 interface GeminiJudgeResultCardProps {
-  judgeData: JudgeData;
+  judgeData?: JudgeData | null;
+  judgeResult?: JudgeData | null;
   className?: string;
   compact?: boolean;
 }
 
 export const GeminiJudgeResultCard: React.FC<GeminiJudgeResultCardProps> = ({
   judgeData,
+  judgeResult,
   className = '',
-  compact = false,
 }) => {
-  const verdictUpper = (judgeData.verdict || '').toUpperCase();
+  const data = judgeData || judgeResult;
+  if (!data || typeof data !== 'object') return null;
+
+  const verdictUpper = String(data.verdict || '').toUpperCase();
 
   // Determine styling based on evaluation verdict — frosted glass tints
   let theme = {
@@ -116,18 +126,56 @@ export const GeminiJudgeResultCard: React.FC<GeminiJudgeResultCardProps> = ({
     };
   }
 
-  const groundednessPct =
-    typeof judgeData.groundednessScore === 'number'
-      ? Math.round(judgeData.groundednessScore * 100)
-      : null;
-  const certaintyPct =
-    typeof judgeData.certaintyScore === 'number'
-      ? Math.round(judgeData.certaintyScore * 100)
-      : null;
-  const mismatchPct =
-    typeof judgeData.certaintySupportMismatch === 'number'
-      ? Math.round(judgeData.certaintySupportMismatch * 100)
-      : null;
+  const rawGroundedness =
+    typeof data.groundednessScore === 'number'
+      ? data.groundednessScore
+      : typeof data.groundedness_score === 'number'
+        ? data.groundedness_score
+        : null;
+
+  const rawCertainty =
+    typeof data.certaintyScore === 'number'
+      ? data.certaintyScore
+      : typeof data.certainty_score === 'number'
+        ? data.certainty_score
+        : null;
+
+  const rawMismatch =
+    typeof data.certaintySupportMismatch === 'number'
+      ? data.certaintySupportMismatch
+      : typeof data.certainty_support_mismatch === 'number'
+        ? data.certainty_support_mismatch
+        : null;
+
+  const groundednessPct = rawGroundedness !== null ? Math.round(rawGroundedness * 100) : null;
+  const certaintyPct = rawCertainty !== null ? Math.round(rawCertainty * 100) : null;
+  const mismatchPct = rawMismatch !== null ? Math.round(rawMismatch * 100) : null;
+
+  const rawSpans = Array.isArray(data.triggeringSpans)
+    ? data.triggeringSpans
+    : Array.isArray(data.triggering_spans)
+      ? data.triggering_spans
+      : [];
+
+  const cleanSpans: string[] = rawSpans
+    .map((span) => {
+      if (typeof span === 'string') return span;
+      if (span && typeof span === 'object' && typeof span.text === 'string') return span.text;
+      return String(span || '');
+    })
+    .filter(Boolean);
+
+  const displayReasoning =
+    typeof data.reasoning === 'string'
+      ? data.reasoning
+      : typeof data.explanation === 'string'
+        ? data.explanation
+        : typeof data.error === 'string'
+          ? `Judge execution note: ${data.error}`
+          : 'Gemini LLM Judge evaluated semantic grounding and assertion bounds.';
+
+  const displayVerdict = typeof data.verdict === 'string' ? data.verdict : 'EVALUATED';
+  const IconComponent = theme.Icon || HelpCircle;
 
   return (
     <div
@@ -148,23 +196,23 @@ export const GeminiJudgeResultCard: React.FC<GeminiJudgeResultCardProps> = ({
           <span
             className={`font-mono text-xs px-2.5 py-1 rounded-lg border font-semibold flex items-center space-x-1.5 backdrop-blur-md shadow-xs ${theme.badge}`}
           >
-            <theme.Icon className="h-3.5 w-3.5" />
-            <span>{judgeData.verdict}</span>
+            <IconComponent className="h-3.5 w-3.5" />
+            <span>{displayVerdict}</span>
           </span>
         </div>
       </div>
 
       {/* Reasoning Body */}
       <p className="text-[13px] text-[#344054] leading-relaxed font-sans glass-inset p-4 rounded-xl">
-        {judgeData.reasoning}
+        {displayReasoning}
       </p>
 
       {/* Triggering Spans if any */}
-      {judgeData.triggeringSpans && judgeData.triggeringSpans.length > 0 && (
+      {cleanSpans.length > 0 && (
         <div className="space-y-1.5">
           <span className="text-[11px] font-medium text-[#667085]">Triggering claims / spans</span>
           <div className="flex flex-wrap gap-1.5">
-            {judgeData.triggeringSpans.map((span, idx) => (
+            {cleanSpans.map((span, idx) => (
               <span
                 key={idx}
                 className="font-mono text-[11px] bg-[#FEF3F2]/90 text-[#B42318] border border-[#FECDCA] px-2 py-0.5 rounded-lg shadow-xs"

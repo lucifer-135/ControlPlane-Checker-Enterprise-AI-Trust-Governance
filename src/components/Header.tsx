@@ -14,8 +14,8 @@ import {
 } from 'lucide-react';
 
 interface HeaderProps {
-  activeTab: 'dashboard' | 'feed' | 'sandbox' | 'review' | 'policy' | 'metrics';
-  setActiveTab: (tab: 'dashboard' | 'feed' | 'sandbox' | 'review' | 'policy' | 'metrics') => void;
+  activeTab: 'dashboard' | 'feed' | 'review' | 'policy' | 'metrics';
+  setActiveTab: (tab: 'dashboard' | 'feed' | 'review' | 'policy' | 'metrics') => void;
   reviewQueueCount: number;
   onOpenTester: () => void;
   hasApiKey: boolean;
@@ -41,12 +41,6 @@ export const Header: React.FC<HeaderProps> = ({
       icon: Activity,
       testId: 'tab-live-feed',
       hasLivePulse: true,
-    },
-    {
-      id: 'sandbox' as const,
-      label: 'Sandbox Playground',
-      icon: FlaskConical,
-      testId: 'tab-sandbox',
     },
     {
       id: 'review' as const,

@@ -35,7 +35,7 @@ interface DashboardTabProps {
   policyProfiles: Record<UseCaseId, PolicyProfile>;
   reviewDecisions: ReviewDecision[];
   onNavigateTab: (
-    tab: 'dashboard' | 'feed' | 'sandbox' | 'review' | 'policy' | 'metrics',
+    tab: 'dashboard' | 'feed' | 'review' | 'policy' | 'metrics',
     targetId?: string,
     startLiveStream?: boolean,
   ) => void;
@@ -267,10 +267,10 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-sm font-semibold text-[#101828]">
-                  Interactive Governance Sandbox &amp; Playground
+                  Interactive Governance Sandbox Lab
                 </h3>
                 <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-[#EEF0FE] text-[#4F46E5] border border-[#D9D6FE]">
-                  New Tab
+                  Live Testing
                 </span>
               </div>
               <p className="text-xs text-[#667085] mt-0.5 leading-relaxed">
@@ -280,11 +280,11 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
             </div>
           </div>
           <button
-            onClick={() => onNavigateTab('sandbox')}
+            onClick={onOpenTester}
             className="glass-btn-primary text-white px-4 py-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer shadow-sm hover:scale-[1.02] active:scale-[0.98] transition-all whitespace-nowrap"
           >
-            <Play className="h-3.5 w-3.5 fill-current" />
-            <span>Launch Sandbox Playground</span>
+            <FlaskConical className="h-3.5 w-3.5" />
+            <span>Launch Sandbox Lab</span>
           </button>
         </div>
 

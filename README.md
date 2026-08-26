@@ -18,21 +18,23 @@
 
 ## 📌 Table of Contents
 
-1. [Overview & Problem Statement](#-overview--problem-statement)
-2. [Solution Architecture](#-solution-architecture)
-3. [The Three Governance Lanes](#-the-three-governance-lanes)
-4. [Four-Tier Policy Enactment](#-four-tier-policy-enactment)
-5. [Database & Audit Ledger](#-database--audit-ledger)
-6. [REST API Reference](#-rest-api-reference)
-7. [Key Platform Features](#-key-platform-features)
-8. [Technology Stack & Dependencies](#-technology-stack--dependencies)
-9. [Security & Privacy Posture](#-security--privacy-posture)
-10. [Getting Started & Execution Instructions](#-getting-started--execution-instructions)
-11. [Project Directory Layout](#-project-directory-layout)
-12. [Contributing](#-contributing)
-13. [License](#-license)
+1. [Overview & Problem Statement](#overview-problem-statement)
+2. [Solution Architecture](#solution-architecture)
+3. [The Three Governance Lanes](#three-governance-lanes)
+4. [Four-Tier Policy Enactment](#four-tier-policy-enactment)
+5. [Database & Audit Ledger](#database-audit-ledger)
+6. [REST API Reference](#rest-api-reference)
+7. [Key Platform Features](#key-platform-features)
+8. [Technology Stack & Dependencies](#technology-stack-dependencies)
+9. [Security & Privacy Posture](#security-privacy-posture)
+10. [Getting Started & Execution Instructions](#getting-started-execution-instructions)
+11. [Project Directory Layout](#project-directory-layout)
+12. [Contributing](#contributing)
+13. [License](#license)
 
 ---
+
+<a id="overview-problem-statement"></a>
 
 ## 🚀 Overview & Problem Statement
 
@@ -46,6 +48,8 @@ Enterprises deploying Generative AI models into production encounter four catast
 **ControlPlane Checker** acts as an inline/sidecar trust proxy that intercepts AI prompts, retrieved context documents, and generated responses. It calculates composite risk scores in sub-millisecond heuristics, dynamically escalates ambiguous cases to a live **Gemini 3.6 Flash LLM Judge**, and enforces granular policy guardrails before outputs reach end users.
 
 ---
+
+<a id="solution-architecture"></a>
 
 ## 🏗️ Solution Architecture
 
@@ -102,6 +106,8 @@ flowchart TD
 
 ---
 
+<a id="three-governance-lanes"></a>
+
 ## 🚦 The Three Governance Lanes
 
 ### 1. 🎯 Performance & Groundedness Lane
@@ -129,6 +135,8 @@ flowchart TD
 
 ---
 
+<a id="four-tier-policy-enactment"></a>
+
 ## 🎚️ Four-Tier Policy Enactment
 
 | Tier                 | Condition / Threshold                                         | Enactment Action                                                                             | Latency Overhead             |
@@ -139,6 +147,8 @@ flowchart TD
 | **`BLOCK_ESCALATE`** | $\text{Risk} \ge \theta_{block}$ OR Critical Policy Violation | Intercepts response before rendering; generates safe fallback message; routes to HITL Queue. | $+140\text{ ms}$ (pre-block) |
 
 ---
+
+<a id="key-platform-features"></a>
 
 ## 🖥️ Key Platform Features
 
@@ -179,6 +189,8 @@ flowchart TD
 - Evaluates inputs in real-time across all three lanes and provides on-demand Gemini 3.6 Flash judge evaluations.
 
 ---
+
+<a id="database-audit-ledger"></a>
 
 ## 🗄️ Database & Audit Ledger
 
@@ -239,6 +251,8 @@ erDiagram
 
 ---
 
+<a id="rest-api-reference"></a>
+
 ## 🌐 REST API Reference
 
 The Express backend provides a complete RESTful interface for integration into external LLM gateways and pipelines:
@@ -256,6 +270,8 @@ The Express backend provides a complete RESTful interface for integration into e
 | `POST` | `/api/reset`             | Restore database tables to baseline factory state                          |
 
 ---
+
+<a id="technology-stack-dependencies"></a>
 
 ## 📦 Technology Stack & Dependencies
 
@@ -275,6 +291,8 @@ The Express backend provides a complete RESTful interface for integration into e
 
 ---
 
+<a id="security-privacy-posture"></a>
+
 ## 🔒 Security & Privacy Posture
 
 - **Zero Client-Side Key Exposure**: The `GEMINI_API_KEY` is strictly accessed on the Node.js Express server. No API keys or secret credentials are ever bundled or transmitted to the client browser.
@@ -284,6 +302,8 @@ The Express backend provides a complete RESTful interface for integration into e
 - **Memory-Safe PII Scanning**: Regular expressions and pattern matchers run locally in memory without caching raw sensitive customer data.
 
 ---
+
+<a id="getting-started-execution-instructions"></a>
 
 ## 💻 Getting Started & Execution Instructions
 
@@ -367,6 +387,8 @@ npm start
 
 ---
 
+<a id="project-directory-layout"></a>
+
 ## 📂 Project Directory Layout
 
 ```
@@ -428,11 +450,15 @@ ControlPlane-Checker/
 
 ---
 
+<a id="contributing"></a>
+
 ## 🤝 Contributing
 
 Contributions are welcome! Please read the [Contributing Guide](CONTRIBUTING.md) for development setup, coding standards, and PR guidelines.
 
 ---
+
+<a id="license"></a>
 
 ## 📄 License
 

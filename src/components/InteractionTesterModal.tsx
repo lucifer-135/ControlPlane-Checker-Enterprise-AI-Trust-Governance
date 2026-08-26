@@ -279,42 +279,31 @@ export const InteractionTesterModal: React.FC<InteractionTesterModalProps> = ({
 
         <div className="p-6 space-y-6 max-h-[80vh] overflow-y-auto">
           {/* Preset Buttons */}
-          <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[#667085] font-medium text-[11px] mr-1">Presets:</span>
-              <button
-                onClick={() => handleLoadPreset('overlap')}
-                className="px-3.5 py-1.5 rounded-xl glass-btn-secondary text-[#344054] hover:text-[#101828] transition-all cursor-pointer font-medium"
-              >
-                PII + Redlining Overlap
-              </button>
-              <button
-                onClick={() => handleLoadPreset('hallucination')}
-                className="px-3.5 py-1.5 rounded-xl glass-btn-secondary text-[#344054] hover:text-[#101828] transition-all cursor-pointer font-medium"
-              >
-                Confidently Wrong
-              </button>
-              <button
-                onClick={() => handleLoadPreset('cost')}
-                className="px-3.5 py-1.5 rounded-xl glass-btn-secondary text-[#344054] hover:text-[#101828] transition-all cursor-pointer font-medium"
-              >
-                Runaway Loop (Cost)
-              </button>
-              <button
-                onClick={() => handleLoadPreset('clean')}
-                className="px-3.5 py-1.5 rounded-xl glass-btn-secondary text-[#344054] hover:text-[#101828] transition-all cursor-pointer font-medium"
-              >
-                Clean Grounded
-              </button>
-            </div>
-
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <span className="text-[#667085] font-medium text-[11px] mr-1">Presets:</span>
             <button
-              onClick={handleReset}
-              className="px-3 py-1.5 rounded-xl text-[11px] font-semibold text-[#667085] hover:text-rose-600 hover:bg-rose-50 border border-slate-200 hover:border-rose-200 transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
-              title="Reset all inputs and evaluation cards"
+              onClick={() => handleLoadPreset('overlap')}
+              className="px-3.5 py-1.5 rounded-xl glass-btn-secondary text-[#344054] hover:text-[#101828] transition-all cursor-pointer font-medium hover:scale-[1.02] active:scale-[0.98]"
             >
-              <RotateCcw className="h-3 w-3" />
-              <span>Reset All</span>
+              PII + Redlining Overlap
+            </button>
+            <button
+              onClick={() => handleLoadPreset('hallucination')}
+              className="px-3.5 py-1.5 rounded-xl glass-btn-secondary text-[#344054] hover:text-[#101828] transition-all cursor-pointer font-medium hover:scale-[1.02] active:scale-[0.98]"
+            >
+              Confidently Wrong
+            </button>
+            <button
+              onClick={() => handleLoadPreset('cost')}
+              className="px-3.5 py-1.5 rounded-xl glass-btn-secondary text-[#344054] hover:text-[#101828] transition-all cursor-pointer font-medium hover:scale-[1.02] active:scale-[0.98]"
+            >
+              Runaway Loop (Cost)
+            </button>
+            <button
+              onClick={() => handleLoadPreset('clean')}
+              className="px-3.5 py-1.5 rounded-xl glass-btn-secondary text-[#344054] hover:text-[#101828] transition-all cursor-pointer font-medium hover:scale-[1.02] active:scale-[0.98]"
+            >
+              Clean Grounded
             </button>
           </div>
 
@@ -407,28 +396,28 @@ export const InteractionTesterModal: React.FC<InteractionTesterModalProps> = ({
           <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
             <button
               onClick={handleReset}
-              className="inline-flex items-center space-x-1.5 px-4 py-2.5 rounded-xl text-xs font-medium text-[#475467] hover:text-[#101828] hover:bg-slate-200/60 border border-slate-200 bg-white/70 transition-all cursor-pointer shadow-xs"
+              className="group/reset inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl text-xs font-semibold text-[#475467] hover:text-rose-600 bg-white/80 hover:bg-rose-50/80 border border-slate-200/90 hover:border-rose-200 shadow-xs hover:shadow-md transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] cursor-pointer select-none backdrop-blur-md"
               title="Reset all inputs and evaluation cards"
             >
-              <RotateCcw className="h-3.5 w-3.5" />
+              <RotateCcw className="h-3.5 w-3.5 text-[#667085] transition-transform duration-500 ease-out group-hover/reset:-rotate-180 group-hover/reset:text-rose-600" />
               <span>Reset Inputs</span>
             </button>
 
             <div className="flex flex-wrap items-center gap-3">
               <button
                 onClick={handleEvaluate}
-                className="inline-flex items-center space-x-2 px-6 py-2.5 rounded-xl text-xs font-semibold glass-btn-primary text-white transition-all cursor-pointer shadow-md"
+                className="group/eval inline-flex items-center space-x-2 px-6 py-2.5 rounded-xl text-xs font-semibold glass-btn-primary text-white transition-all duration-200 cursor-pointer shadow-md hover:shadow-[0_4px_16px_rgba(79,70,229,0.35)] hover:scale-[1.02] active:scale-[0.98]"
               >
-                <Play className="h-3.5 w-3.5 fill-current" />
+                <Play className="h-3.5 w-3.5 fill-current transition-transform duration-200 group-hover/eval:scale-110 group-hover/eval:translate-x-0.5" />
                 <span>Evaluate with ControlPlane Lanes</span>
               </button>
 
               <button
                 onClick={handleRunLiveJudge}
                 disabled={isLoadingJudge}
-                className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl text-xs font-medium glass-btn-secondary text-[#344054] hover:text-[#101828] transition-all cursor-pointer disabled:opacity-50"
+                className="group/judge inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl text-xs font-semibold glass-btn-secondary text-[#344054] hover:text-[#101828] transition-all duration-200 cursor-pointer hover:shadow-md hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
               >
-                <Sparkles className="h-3.5 w-3.5 text-[#4F46E5]" />
+                <Sparkles className="h-3.5 w-3.5 text-[#4F46E5] transition-transform duration-300 group-hover/judge:rotate-12 group-hover/judge:scale-110" />
                 <span>
                   {isLoadingJudge ? 'Executing Gemini Judge' : 'Run Real-Time Gemini Judge'}
                 </span>

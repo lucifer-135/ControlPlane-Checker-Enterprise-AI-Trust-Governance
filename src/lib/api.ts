@@ -14,11 +14,13 @@ import { SYNTHETIC_INTERACTIONS } from '../data/interactions';
 import { DEFAULT_POLICY_PROFILES } from './policyProfiles';
 import { evaluateDataset } from './decisionEngine';
 
-export async function fetchInteractionsApi(
-  useCase?: string,
-): Promise<{ interactions: SyntheticInteraction[]; evaluations: Record<string, EvaluationResult> }> {
+export async function fetchInteractionsApi(useCase?: string): Promise<{
+  interactions: SyntheticInteraction[];
+  evaluations: Record<string, EvaluationResult>;
+}> {
   try {
-    const url = useCase && useCase !== 'ALL' ? `/api/interactions?useCase=${useCase}` : '/api/interactions';
+    const url =
+      useCase && useCase !== 'ALL' ? `/api/interactions?useCase=${useCase}` : '/api/interactions';
     const resp = await fetch(url);
     if (resp.ok) {
       const data = await resp.json();

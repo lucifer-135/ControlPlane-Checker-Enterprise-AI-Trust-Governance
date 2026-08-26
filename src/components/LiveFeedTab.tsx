@@ -55,11 +55,9 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
 }) => {
   // Stream simulation states - only start from 1 if streamTrigger is explicitly active
   const [streamIndex, setStreamIndex] = useState<number>(
-    streamTrigger && streamTrigger > 0 ? 1 : interactions.length
+    streamTrigger && streamTrigger > 0 ? 1 : interactions.length,
   );
-  const [isPlaying, setIsPlaying] = useState<boolean>(
-    Boolean(streamTrigger && streamTrigger > 0)
-  );
+  const [isPlaying, setIsPlaying] = useState<boolean>(Boolean(streamTrigger && streamTrigger > 0));
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1); // 1x, 2x, 5x, 0 (instant)
 
   // React to new streamTrigger events (e.g. user clicked Launch Live Stream on overview)
@@ -156,10 +154,12 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
 
     // Anomaly filter
     if (anomalyFilter === 'OVERLAP' && !evalRes.has_multi_lane_overlap) return false;
-    if (anomalyFilter === 'CONFIDENTLY_WRONG' && !evalRes.performance.is_confidently_wrong) return false;
+    if (anomalyFilter === 'CONFIDENTLY_WRONG' && !evalRes.performance.is_confidently_wrong)
+      return false;
     if (anomalyFilter === 'PII' && evalRes.responsibility.pii_detected.length === 0) return false;
     if (anomalyFilter === 'COST' && !evalRes.cost.is_outlier) return false;
-    if (anomalyFilter === 'CLEAN' && item.ground_truth_labels.some((l) => l !== 'clean')) return false;
+    if (anomalyFilter === 'CLEAN' && item.ground_truth_labels.some((l) => l !== 'clean'))
+      return false;
 
     // Search query
     if (searchQuery.trim().length > 0) {
@@ -176,19 +176,19 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
   // Calculate live summary stats from current stream
   const totalStreamed = streamedInteractions.length;
   const totalBlocked = streamedInteractions.filter(
-    (i) => evaluations[i.id]?.verdict === 'BLOCK_ESCALATE'
+    (i) => evaluations[i.id]?.verdict === 'BLOCK_ESCALATE',
   ).length;
   const blockRate = totalStreamed > 0 ? ((totalBlocked / totalStreamed) * 100).toFixed(1) : '0.0';
   const totalOverlaps = streamedInteractions.filter(
-    (i) => evaluations[i.id]?.has_multi_lane_overlap
+    (i) => evaluations[i.id]?.has_multi_lane_overlap,
   ).length;
   const avgOverhead =
     totalStreamed > 0
       ? Math.round(
           streamedInteractions.reduce(
             (acc, i) => acc + (evaluations[i.id]?.added_overhead_latency_ms || 82),
-            0
-          ) / totalStreamed
+            0,
+          ) / totalStreamed,
         )
       : 82;
 
@@ -244,17 +244,20 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
           const matchingSpan = sortedSpans.find(
             (s) =>
               s.text.toLowerCase() === part.toLowerCase() ||
-              s.text.replace(/[$,]/g, '').toLowerCase() === part.replace(/[$,]/g, '').toLowerCase()
+              s.text.replace(/[$,]/g, '').toLowerCase() === part.replace(/[$,]/g, '').toLowerCase(),
           );
 
           if (matchingSpan) {
-            let bgClass = 'bg-[#FEF3F2] text-[#B42318] border border-[#FECDCA] font-semibold px-1.5 py-0.5 rounded shadow-xs';
+            let bgClass =
+              'bg-[#FEF3F2] text-[#B42318] border border-[#FECDCA] font-semibold px-1.5 py-0.5 rounded shadow-xs';
             let badgeLabel = 'HALLUCINATION';
             if (matchingSpan.type === 'bias') {
-              bgClass = 'bg-[#F4F3FF] text-[#6941C6] border border-[#D9D6FE] font-semibold px-1.5 py-0.5 rounded shadow-xs';
+              bgClass =
+                'bg-[#F4F3FF] text-[#6941C6] border border-[#D9D6FE] font-semibold px-1.5 py-0.5 rounded shadow-xs';
               badgeLabel = 'BIAS / STEREOTYPE';
             } else if (matchingSpan.type === 'pii') {
-              bgClass = 'bg-[#FFFAEB] text-[#B54708] border border-[#FEDF89] font-semibold px-1.5 py-0.5 rounded shadow-xs';
+              bgClass =
+                'bg-[#FFFAEB] text-[#B54708] border border-[#FEDF89] font-semibold px-1.5 py-0.5 rounded shadow-xs';
               badgeLabel = 'PII EXPOSURE';
             }
 
@@ -348,9 +351,7 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
               <div className="p-1.5 rounded-xl bg-[#FEF3F2] border border-[#FECDCA]">
                 <Shield className="h-4 w-4 text-[#F04438]" />
               </div>
-              <span className="text-[13px] text-[#101828] font-semibold">
-                Policy Interceptions
-              </span>
+              <span className="text-[13px] text-[#101828] font-semibold">Policy Interceptions</span>
             </div>
             <span className="text-[10px] text-[#B42318] font-semibold bg-[#FEF3F2]/90 px-2.5 py-0.5 rounded-lg border border-[#FECDCA] whitespace-nowrap shadow-xs">
               Live rate
@@ -402,7 +403,13 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
               ) : (
                 <Play className="h-3.5 w-3.5 fill-current text-white" />
               )}
-              <span>{isPlaying ? 'Pause stream' : streamIndex >= interactions.length ? 'Replay stream' : 'Play live feed'}</span>
+              <span>
+                {isPlaying
+                  ? 'Pause stream'
+                  : streamIndex >= interactions.length
+                    ? 'Replay stream'
+                    : 'Play live feed'}
+              </span>
             </button>
 
             <button
@@ -500,11 +507,31 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
           {/* Verdict Filter */}
           <span className="text-[#667085] font-medium text-xs mr-1 hidden sm:inline">Verdict:</span>
           {[
-            { id: 'ALL', label: 'All Tiers', colorClass: 'bg-white text-[#4F46E5] border-[#4F46E5]/40 shadow-xs font-semibold' },
-            { id: 'ALLOW', label: 'Allow', colorClass: 'bg-[#ECFDF3] text-[#067647] border-[#ABEFC6] shadow-xs font-semibold' },
-            { id: 'BADGE', label: 'Badge', colorClass: 'bg-[#EFF6FF] text-[#175CD3] border-[#B2DDFF] shadow-xs font-semibold' },
-            { id: 'SOFT_CORRECT', label: 'Soft-Correct', colorClass: 'bg-[#FFFAEB] text-[#B54708] border-[#FEDF89] shadow-xs font-semibold' },
-            { id: 'BLOCK_ESCALATE', label: 'Block', colorClass: 'bg-[#FEF3F2] text-[#B42318] border-[#FECDCA] shadow-xs font-semibold' },
+            {
+              id: 'ALL',
+              label: 'All Tiers',
+              colorClass: 'bg-white text-[#4F46E5] border-[#4F46E5]/40 shadow-xs font-semibold',
+            },
+            {
+              id: 'ALLOW',
+              label: 'Allow',
+              colorClass: 'bg-[#ECFDF3] text-[#067647] border-[#ABEFC6] shadow-xs font-semibold',
+            },
+            {
+              id: 'BADGE',
+              label: 'Badge',
+              colorClass: 'bg-[#EFF6FF] text-[#175CD3] border-[#B2DDFF] shadow-xs font-semibold',
+            },
+            {
+              id: 'SOFT_CORRECT',
+              label: 'Soft-Correct',
+              colorClass: 'bg-[#FFFAEB] text-[#B54708] border-[#FEDF89] shadow-xs font-semibold',
+            },
+            {
+              id: 'BLOCK_ESCALATE',
+              label: 'Block',
+              colorClass: 'bg-[#FEF3F2] text-[#B42318] border-[#FECDCA] shadow-xs font-semibold',
+            },
           ].map((v) => (
             <button
               key={v.id}
@@ -542,8 +569,12 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
         {filteredInteractions.length === 0 ? (
           <div className="glass-panel rounded-2xl p-12 text-center">
             <Bot className="h-10 w-10 text-[#98A2B3] mx-auto mb-3" />
-            <p className="text-sm font-semibold text-[#101828]">No interactions match the selected filters.</p>
-            <p className="text-xs text-[#667085] mt-1">Try relaxing your filter criteria or stepping the stream forward.</p>
+            <p className="text-sm font-semibold text-[#101828]">
+              No interactions match the selected filters.
+            </p>
+            <p className="text-xs text-[#667085] mt-1">
+              Try relaxing your filter criteria or stepping the stream forward.
+            </p>
           </div>
         ) : (
           filteredInteractions.map((item, index) => {
@@ -561,12 +592,12 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
                   isExpanded
                     ? 'border-[#4F46E5] ring-2 ring-[#EEF0FE] shadow-lg'
                     : evalRes.verdict === 'BLOCK_ESCALATE'
-                    ? 'hover:border-[#F04438]/60'
-                    : evalRes.verdict === 'SOFT_CORRECT'
-                    ? 'hover:border-[#DC6803]/60'
-                    : evalRes.verdict === 'BADGE'
-                    ? 'hover:border-[#2E90FA]/60'
-                    : 'hover:border-[#12B76A]/60'
+                      ? 'hover:border-[#F04438]/60'
+                      : evalRes.verdict === 'SOFT_CORRECT'
+                        ? 'hover:border-[#DC6803]/60'
+                        : evalRes.verdict === 'BADGE'
+                          ? 'hover:border-[#2E90FA]/60'
+                          : 'hover:border-[#12B76A]/60'
                 }`}
               >
                 {/* Interaction Main Header Row */}
@@ -577,7 +608,9 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
                   {/* Left: Metadata & Prompt Summary */}
                   <div className="space-y-2 flex-1 min-w-0">
                     <div className="flex items-center flex-wrap gap-2 text-xs">
-                      <span className="text-[#98A2B3] font-mono font-semibold tnum">#{index + 1}</span>
+                      <span className="text-[#98A2B3] font-mono font-semibold tnum">
+                        #{index + 1}
+                      </span>
                       <span className="text-[#101828] font-mono font-semibold tnum">{item.id}</span>
 
                       {/* Use Case Chip */}
@@ -585,8 +618,8 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
                         {item.use_case === 'support_bot'
                           ? 'Support Bot'
                           : item.use_case === 'internal_copilot'
-                          ? 'Internal Copilot'
-                          : 'Decision Support'}
+                            ? 'Internal Copilot'
+                            : 'Decision Support'}
                       </span>
 
                       {/* Multilabel Overlap Tag */}
@@ -620,8 +653,12 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
                       }`}
                       title={`Performance Lane: Groundedness ${(evalRes.performance.groundedness_score * 100).toFixed(0)}%`}
                     >
-                      <Zap className={`h-3 w-3 ${evalRes.performance.is_confidently_wrong ? 'text-[#F04438]' : 'text-[#2E90FA]'}`} />
-                      <span className="font-mono tnum">{(evalRes.performance.groundedness_score * 100).toFixed(0)}%</span>
+                      <Zap
+                        className={`h-3 w-3 ${evalRes.performance.is_confidently_wrong ? 'text-[#F04438]' : 'text-[#2E90FA]'}`}
+                      />
+                      <span className="font-mono tnum">
+                        {(evalRes.performance.groundedness_score * 100).toFixed(0)}%
+                      </span>
                       {evalRes.performance.is_confidently_wrong && (
                         <span className="text-[9px] bg-white text-[#B42318] border border-[#FECDCA] px-1 rounded-md font-semibold">
                           CW
@@ -638,7 +675,9 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
                       }`}
                       title={`Cost Lane: Token Z-Score ${evalRes.cost.token_z_score}`}
                     >
-                      <Coins className={`h-3 w-3 ${evalRes.cost.is_outlier ? 'text-[#DC6803]' : 'text-[#98A2B3]'}`} />
+                      <Coins
+                        className={`h-3 w-3 ${evalRes.cost.is_outlier ? 'text-[#DC6803]' : 'text-[#98A2B3]'}`}
+                      />
                       <span className="font-mono tnum">{item.token_count.total}t</span>
                     </div>
 
@@ -651,13 +690,15 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
                       }`}
                       title={`Responsibility Lane: ${evalRes.responsibility.pii_detected.length} PII detected`}
                     >
-                      <Shield className={`h-3 w-3 ${evalRes.responsibility.risk_score > 0.4 ? 'text-[#7A5AF8]' : 'text-[#98A2B3]'}`} />
+                      <Shield
+                        className={`h-3 w-3 ${evalRes.responsibility.risk_score > 0.4 ? 'text-[#7A5AF8]' : 'text-[#98A2B3]'}`}
+                      />
                       <span>
                         {evalRes.responsibility.pii_detected.length > 0
                           ? `PII (${evalRes.responsibility.pii_detected.length})`
                           : evalRes.responsibility.bias_flags.length > 0
-                          ? 'Bias'
-                          : 'Clean'}
+                            ? 'Bias'
+                            : 'Clean'}
                       </span>
                     </div>
 
@@ -671,7 +712,11 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
 
                     {/* Expand Toggle */}
                     <button className="text-[#98A2B3] hover:text-[#101828] p-1.5 rounded-lg hover:bg-white/60 transition-colors">
-                      {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                      {isExpanded ? (
+                        <ChevronUp className="h-4 w-4" />
+                      ) : (
+                        <ChevronDown className="h-4 w-4" />
+                      )}
                     </button>
                   </div>
                 </div>
@@ -685,14 +730,16 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
                         <Layers className="h-5 w-5 text-[#DC6803] shrink-0 mt-0.5" />
                         <div>
                           <div className="text-[13px] font-semibold text-[#B54708]">
-                            Multi-lane overlap detected ({evalRes.overlapping_lanes.length} active vectors)
+                            Multi-lane overlap detected ({evalRes.overlapping_lanes.length} active
+                            vectors)
                           </div>
                           <p className="text-xs text-[#475467] mt-1 font-sans leading-relaxed">
                             This response tripped multiple governance lanes simultaneously:{' '}
                             <span className="font-semibold text-[#101828]">
                               {evalRes.overlapping_lanes.join(' + ')}
                             </span>
-                            . ControlPlane Checker isolates concurrent failure vectors without collapsing to a single label.
+                            . ControlPlane Checker isolates concurrent failure vectors without
+                            collapsing to a single label.
                           </p>
                         </div>
                       </div>
@@ -706,7 +753,9 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
                           <span className="text-[11px] text-[#667085] block font-medium">
                             User prompt
                           </span>
-                          <p className="text-sm text-[#101828] font-sans leading-relaxed">{item.prompt}</p>
+                          <p className="text-sm text-[#101828] font-sans leading-relaxed">
+                            {item.prompt}
+                          </p>
                         </div>
 
                         <div className="glass-inset rounded-xl p-4 space-y-2">
@@ -715,11 +764,14 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
                               Retrieved context (governance source)
                             </span>
                             <span className="text-[10px] px-2 py-0.5 rounded-lg bg-[#F4F3FF] border border-[#D9D6FE] text-[#6941C6] font-medium whitespace-nowrap">
-                              {item.retrieved_context ? 'Vector RAG Context' : 'No Context / Unverified'}
+                              {item.retrieved_context
+                                ? 'Vector RAG Context'
+                                : 'No Context / Unverified'}
                             </span>
                           </div>
                           <p className="text-xs text-[#344054] leading-relaxed italic bg-white/90 p-3 rounded-lg border border-slate-200 font-sans">
-                            {item.retrieved_context || '[No retrieval context attached. Evaluated against certainty heuristic.]'}
+                            {item.retrieved_context ||
+                              '[No retrieval context attached. Evaluated against certainty heuristic.]'}
                           </p>
                         </div>
                       </div>
@@ -788,20 +840,28 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
                           <span className="flex items-center gap-1.5">
                             <Zap className="h-3.5 w-3.5 text-[#2E90FA]" /> Performance lane
                           </span>
-                          <span className="font-mono tnum">{(evalRes.performance.groundedness_score * 100).toFixed(0)}%</span>
+                          <span className="font-mono tnum">
+                            {(evalRes.performance.groundedness_score * 100).toFixed(0)}%
+                          </span>
                         </div>
                         <div className="text-xs text-[#475467] space-y-1">
                           <div className="flex justify-between gap-2">
                             <span className="text-[#667085]">Groundedness</span>
-                            <span className="text-[#101828] font-mono font-medium tnum">{evalRes.performance.groundedness_score}</span>
+                            <span className="text-[#101828] font-mono font-medium tnum">
+                              {evalRes.performance.groundedness_score}
+                            </span>
                           </div>
                           <div className="flex justify-between gap-2">
                             <span className="text-[#667085]">Certainty</span>
-                            <span className="text-[#101828] font-mono font-medium tnum">{evalRes.performance.certainty_score}</span>
+                            <span className="text-[#101828] font-mono font-medium tnum">
+                              {evalRes.performance.certainty_score}
+                            </span>
                           </div>
                           <div className="flex justify-between gap-2">
                             <span className="text-[#667085]">Mismatch</span>
-                            <span className="text-[#B42318] font-mono font-semibold tnum">{evalRes.performance.certainty_support_mismatch}</span>
+                            <span className="text-[#B42318] font-mono font-semibold tnum">
+                              {evalRes.performance.certainty_support_mismatch}
+                            </span>
                           </div>
                         </div>
                         <p className="text-xs text-[#667085] pt-2 border-t border-slate-200 font-sans leading-relaxed">
@@ -820,15 +880,21 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
                         <div className="text-xs text-[#475467] space-y-1">
                           <div className="flex justify-between gap-2">
                             <span className="text-[#667085]">Baseline tokens</span>
-                            <span className="text-[#101828] font-mono font-medium tnum">{evalRes.cost.baseline_mean_tokens}t</span>
+                            <span className="text-[#101828] font-mono font-medium tnum">
+                              {evalRes.cost.baseline_mean_tokens}t
+                            </span>
                           </div>
                           <div className="flex justify-between gap-2">
                             <span className="text-[#667085]">Actual tokens</span>
-                            <span className="text-[#101828] font-mono font-medium tnum">{item.token_count.total}t</span>
+                            <span className="text-[#101828] font-mono font-medium tnum">
+                              {item.token_count.total}t
+                            </span>
                           </div>
                           <div className="flex justify-between gap-2">
                             <span className="text-[#667085]">Baseline latency</span>
-                            <span className="text-[#101828] font-mono font-medium tnum">{evalRes.cost.baseline_mean_latency_ms}ms</span>
+                            <span className="text-[#101828] font-mono font-medium tnum">
+                              {evalRes.cost.baseline_mean_latency_ms}ms
+                            </span>
                           </div>
                         </div>
                         <p className="text-xs text-[#667085] pt-2 border-t border-slate-200 font-sans leading-relaxed">
@@ -842,7 +908,9 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
                           <span className="flex items-center gap-1.5">
                             <Shield className="h-3.5 w-3.5 text-[#7A5AF8]" /> Responsibility
                           </span>
-                          <span className="font-mono tnum">Risk: {evalRes.responsibility.risk_score}</span>
+                          <span className="font-mono tnum">
+                            Risk: {evalRes.responsibility.risk_score}
+                          </span>
                         </div>
                         <div className="text-xs text-[#475467] space-y-1">
                           <div className="flex justify-between gap-2">
@@ -864,7 +932,9 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
                           <div className="flex justify-between gap-2">
                             <span className="text-[#667085]">Regulatory</span>
                             <span className="text-[#067647] font-medium">
-                              {evalRes.responsibility.policy_violations.length > 0 ? 'Violated' : 'Passed'}
+                              {evalRes.responsibility.policy_violations.length > 0
+                                ? 'Violated'
+                                : 'Passed'}
                             </span>
                           </div>
                         </div>
@@ -878,7 +948,8 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
                     <div className="flex flex-wrap items-center justify-between gap-4 glass-panel rounded-xl p-4 shadow-xs">
                       <div className="flex items-center space-x-3 text-xs">
                         <span className="text-[#667085] font-medium">
-                          Session risk accumulator (<span className="font-mono tnum">{item.session_id}</span>)
+                          Session risk accumulator (
+                          <span className="font-mono tnum">{item.session_id}</span>)
                         </span>
                         <div className="flex items-center space-x-2">
                           <div className="w-28 h-2.5 bg-slate-200 rounded-full overflow-hidden border border-slate-300 p-0.5">
@@ -887,8 +958,8 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
                                 evalRes.session_accumulated_risk > 0.6
                                   ? 'bg-[#F04438]'
                                   : evalRes.session_accumulated_risk > 0.35
-                                  ? 'bg-[#DC6803]'
-                                  : 'bg-[#12B76A]'
+                                    ? 'bg-[#DC6803]'
+                                    : 'bg-[#12B76A]'
                               } transition-all duration-300`}
                               style={{ width: `${evalRes.session_accumulated_risk * 100}%` }}
                             ></div>
@@ -910,8 +981,8 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
                           {evaluatingJudgeId === item.id
                             ? 'Evaluating with Gemini'
                             : judgeData
-                            ? 'Re-evaluate with Judge'
-                            : 'Run Live Gemini Judge Tiebreaker'}
+                              ? 'Re-evaluate with Judge'
+                              : 'Run Live Gemini Judge Tiebreaker'}
                         </span>
                         {evaluatingJudgeId === item.id && (
                           <WavyDots color="bg-white" size="xs" className="ml-1" />
@@ -920,9 +991,7 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
                     </div>
 
                     {/* Live Judge Results Display */}
-                    {judgeData && (
-                      <GeminiJudgeResultCard judgeData={judgeData} />
-                    )}
+                    {judgeData && <GeminiJudgeResultCard judgeData={judgeData} />}
                   </div>
                 )}
               </div>

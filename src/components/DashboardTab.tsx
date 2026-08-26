@@ -36,7 +36,7 @@ interface DashboardTabProps {
   onNavigateTab: (
     tab: 'dashboard' | 'feed' | 'review' | 'policy' | 'metrics',
     targetId?: string,
-    startLiveStream?: boolean
+    startLiveStream?: boolean,
   ) => void;
   onOpenTester: () => void;
 }
@@ -52,35 +52,39 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   // Summary calculations
   const totalInteractions = interactions.length;
   const blockedInteractions = interactions.filter(
-    (i) => evaluations[i.id]?.verdict === 'BLOCK_ESCALATE'
+    (i) => evaluations[i.id]?.verdict === 'BLOCK_ESCALATE',
   );
   const softCorrectInteractions = interactions.filter(
-    (i) => evaluations[i.id]?.verdict === 'SOFT_CORRECT'
+    (i) => evaluations[i.id]?.verdict === 'SOFT_CORRECT',
   );
-  const overlapInteractions = interactions.filter(
-    (i) => evaluations[i.id]?.has_multi_lane_overlap
-  );
+  const overlapInteractions = interactions.filter((i) => evaluations[i.id]?.has_multi_lane_overlap);
 
   const pendingReviewCount = blockedInteractions.filter(
-    (i) => !reviewDecisions.some((d) => d.interaction_id === i.id)
+    (i) => !reviewDecisions.some((d) => d.interaction_id === i.id),
   ).length;
 
-  const blockRate = totalInteractions > 0
-    ? ((blockedInteractions.length / totalInteractions) * 100).toFixed(1)
-    : '0.0';
+  const blockRate =
+    totalInteractions > 0
+      ? ((blockedInteractions.length / totalInteractions) * 100).toFixed(1)
+      : '0.0';
 
-  const avgOverheadMs = totalInteractions > 0
-    ? Math.round(
-        interactions.reduce(
-          (acc, i) => acc + (evaluations[i.id]?.added_overhead_latency_ms || 82),
-          0
-        ) / totalInteractions
-      )
-    : 82;
+  const avgOverheadMs =
+    totalInteractions > 0
+      ? Math.round(
+          interactions.reduce(
+            (acc, i) => acc + (evaluations[i.id]?.added_overhead_latency_ms || 82),
+            0,
+          ) / totalInteractions,
+        )
+      : 82;
 
   // Recent high-priority incidents for the preview table
   const recentHighRiskIncidents = interactions
-    .filter((i) => evaluations[i.id]?.verdict === 'BLOCK_ESCALATE' || evaluations[i.id]?.has_multi_lane_overlap)
+    .filter(
+      (i) =>
+        evaluations[i.id]?.verdict === 'BLOCK_ESCALATE' ||
+        evaluations[i.id]?.has_multi_lane_overlap,
+    )
     .slice(0, 4);
 
   return (
@@ -89,10 +93,14 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
       <section className="flex flex-col gap-6 max-w-4xl pt-2">
         <div>
           <h1 className="font-display text-4xl sm:text-5xl lg:text-6xl font-semibold text-[#101828] tracking-tight leading-[1.05]">
-            Enterprise AI Trust &amp; <span className="bg-gradient-to-r from-[#4F46E5] to-[#7C3AED] bg-clip-text text-transparent">Governance</span>
+            Enterprise AI Trust &amp;{' '}
+            <span className="bg-gradient-to-r from-[#4F46E5] to-[#7C3AED] bg-clip-text text-transparent">
+              Governance
+            </span>
           </h1>
           <p className="text-base sm:text-lg text-[#475467] max-w-2xl leading-relaxed font-sans mt-4">
-            Real-time monitoring, multi-lane risk isolation, and autonomous decision routing for mission-critical enterprise AI deployments.
+            Real-time monitoring, multi-lane risk isolation, and autonomous decision routing for
+            mission-critical enterprise AI deployments.
           </p>
         </div>
 
@@ -139,10 +147,13 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
             <span className="font-display text-4xl font-semibold text-[#101828] tracking-tight leading-none tnum">
               {blockedInteractions.length}
             </span>
-            <span className="font-mono text-xs text-[#D92D20] font-semibold tnum">({blockRate}%)</span>
+            <span className="font-mono text-xs text-[#D92D20] font-semibold tnum">
+              ({blockRate}%)
+            </span>
           </div>
           <p className="text-xs text-[#667085] pt-3 border-t border-slate-200 leading-relaxed">
-            <span className="font-mono tnum text-[#475467] font-medium">{totalInteractions}</span> interactions evaluated
+            <span className="font-mono tnum text-[#475467] font-medium">{totalInteractions}</span>{' '}
+            interactions evaluated
           </p>
         </div>
 
@@ -201,14 +212,15 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
             {pendingReviewCount > 0 && (
               <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-[#FEF3F2]/90 border border-[#FECDCA] text-[#B42318] shadow-xs">
                 <span className="w-1.5 h-1.5 rounded-full bg-[#F04438] animate-pulse"></span>
-                <span className="text-[10px] font-semibold whitespace-nowrap">
-                  Action Required
-                </span>
+                <span className="text-[10px] font-semibold whitespace-nowrap">Action Required</span>
               </div>
             )}
           </div>
           <p className="text-xs text-[#667085] pt-3 border-t border-slate-200 leading-relaxed">
-            <span className="font-mono tnum text-[#475467] font-medium">{reviewDecisions.length}</span> decisions logged in audit
+            <span className="font-mono tnum text-[#475467] font-medium">
+              {reviewDecisions.length}
+            </span>{' '}
+            decisions logged in audit
           </p>
         </div>
 
@@ -250,7 +262,9 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
             <span className="w-2 h-2 rounded-full bg-[#2E90FA] shadow-[0_0_8px_#2E90FA]"></span>
             Governance Modules &amp; Workflow Gateway
           </h2>
-          <span className="text-xs text-[#98A2B3] hidden sm:inline font-medium">Select any module to enter</span>
+          <span className="text-xs text-[#98A2B3] hidden sm:inline font-medium">
+            Select any module to enter
+          </span>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -268,7 +282,8 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                   1. Live Inference Stream
                 </h3>
                 <p className="text-[13px] text-[#667085] mt-1 leading-relaxed font-sans">
-                  Real-time telemetry, tripartite risk analysis, and automated Gemini 3.6 tiebreaker judge arbitration.
+                  Real-time telemetry, tripartite risk analysis, and automated Gemini 3.6 tiebreaker
+                  judge arbitration.
                 </p>
               </div>
             </div>
@@ -276,7 +291,9 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
             <div className="glass-inset rounded-xl p-4 mt-auto space-y-2.5 text-xs">
               <div className="flex justify-between items-center gap-3">
                 <span className="text-[#667085]">Stream Coverage</span>
-                <span className="text-[#344054] font-medium text-right">Support Bot, Internal Copilot, Decision Support</span>
+                <span className="text-[#344054] font-medium text-right">
+                  Support Bot, Internal Copilot, Decision Support
+                </span>
               </div>
               <div className="flex justify-between items-center pt-2.5 border-t border-slate-200 gap-3">
                 <span className="text-[#667085] shrink-0">Autonomous Routing</span>
@@ -312,7 +329,8 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                   2. Frontline Review Queue
                 </h3>
                 <p className="text-[13px] text-[#667085] mt-1 leading-relaxed font-sans">
-                  Human-in-the-loop triage, inline PII redaction editor, and threshold drift calibration feedback loop.
+                  Human-in-the-loop triage, inline PII redaction editor, and threshold drift
+                  calibration feedback loop.
                 </p>
               </div>
             </div>
@@ -320,12 +338,15 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
             <div className="glass-inset rounded-xl p-4 mt-auto space-y-2.5 text-xs">
               <div className="flex justify-between items-center gap-3">
                 <span className="text-[#667085]">Triage Actions</span>
-                <span className="text-[#344054] font-medium text-right">Confirm Block, Sanitize &amp; Allow</span>
+                <span className="text-[#344054] font-medium text-right">
+                  Confirm Block, Sanitize &amp; Allow
+                </span>
               </div>
               <div className="flex justify-between items-center pt-2.5 border-t border-slate-200 gap-3">
                 <span className="text-[#667085]">Audit Trail</span>
                 <span className="text-[#067647] font-medium text-right">
-                  <span className="font-mono tnum">{reviewDecisions.length}</span> decisions logged in session
+                  <span className="font-mono tnum">{reviewDecisions.length}</span> decisions logged
+                  in session
                 </span>
               </div>
             </div>
@@ -345,7 +366,8 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                   3. Governance Policy Studio
                 </h3>
                 <p className="text-[13px] text-[#667085] mt-1 leading-relaxed font-sans">
-                  Zero-downtime hot-rescore thresholds, lane weight distributions, and EU AI Act / HIPAA jurisdiction rulesets.
+                  Zero-downtime hot-rescore thresholds, lane weight distributions, and EU AI Act /
+                  HIPAA jurisdiction rulesets.
                 </p>
               </div>
             </div>
@@ -353,7 +375,9 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
             <div className="glass-inset rounded-xl p-4 mt-auto text-xs">
               <div className="flex justify-between items-center gap-3">
                 <span className="text-[#667085] shrink-0">Standard Presets</span>
-                <span className="text-[#344054] font-medium text-right">Strict Enterprise, Balanced Standard, High Throughput</span>
+                <span className="text-[#344054] font-medium text-right">
+                  Strict Enterprise, Balanced Standard, High Throughput
+                </span>
               </div>
             </div>
           </div>
@@ -372,7 +396,8 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                   4. Trust Metrics &amp; Tradeoff Dial
                 </h3>
                 <p className="text-[13px] text-[#667085] mt-1 leading-relaxed font-sans">
-                  Calibrated dial balancing Alert Fatigue (False Positives) vs Compliance Liability (False Negatives).
+                  Calibrated dial balancing Alert Fatigue (False Positives) vs Compliance Liability
+                  (False Negatives).
                 </p>
               </div>
             </div>
@@ -380,7 +405,9 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
             <div className="glass-inset rounded-xl p-4 mt-auto text-xs">
               <div className="flex justify-between items-center gap-3">
                 <span className="text-[#667085]">Confusion Matrix</span>
-                <span className="text-[#344054] font-medium text-right">Interactive 4-Quadrant Drilldown</span>
+                <span className="text-[#344054] font-medium text-right">
+                  Interactive 4-Quadrant Drilldown
+                </span>
               </div>
             </div>
           </div>
@@ -419,9 +446,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                 <th className="py-3.5 px-4 text-[11px] text-[#667085] font-semibold">
                   Triggering Violations
                 </th>
-                <th className="py-3.5 px-4 text-[11px] text-[#667085] font-semibold">
-                  Verdict
-                </th>
+                <th className="py-3.5 px-4 text-[11px] text-[#667085] font-semibold">Verdict</th>
                 <th className="py-3.5 px-4 text-[11px] text-[#667085] font-semibold text-right">
                   Action
                 </th>
@@ -435,10 +460,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                 const isBlocked = evalRes.verdict === 'BLOCK_ESCALATE';
 
                 return (
-                  <tr
-                    key={item.id}
-                    className="hover:bg-white/60 transition-colors"
-                  >
+                  <tr key={item.id} className="hover:bg-white/60 transition-colors">
                     <td className="py-3.5 px-4 font-mono text-xs font-semibold text-[#101828] tnum">
                       {item.id}
                     </td>
@@ -446,8 +468,8 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                       {item.use_case === 'decision_support'
                         ? 'Decision Support'
                         : item.use_case === 'internal_copilot'
-                        ? 'Internal Copilot'
-                        : 'Support Bot'}
+                          ? 'Internal Copilot'
+                          : 'Support Bot'}
                     </td>
                     <td className="py-3.5 px-4 text-[#475467] truncate max-w-[260px] text-xs font-sans">
                       {item.prompt}
@@ -457,17 +479,15 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                         {evalRes.has_multi_lane_overlap
                           ? `Performance (Ungrounded) + Responsibility (${evalRes.overlapping_lanes.join(', ')})`
                           : evalRes.responsibility.pii_detected.length > 0
-                          ? `Responsibility (PII: ${evalRes.responsibility.pii_detected[0].type})`
-                          : 'Performance (Ungrounded Assertion)'}
+                            ? `Responsibility (PII: ${evalRes.responsibility.pii_detected[0].type})`
+                            : 'Performance (Ungrounded Assertion)'}
                       </span>
                     </td>
                     <td className="py-3.5 px-4">
                       {isBlocked ? (
                         <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#FEF3F2]/85 border border-[#FECDCA] text-[#B42318] w-fit shadow-xs">
                           <span className="w-1.5 h-1.5 rounded-full bg-[#F04438]"></span>
-                          <span className="text-[10px] font-semibold">
-                            Block + Escalate
-                          </span>
+                          <span className="text-[10px] font-semibold">Block + Escalate</span>
                         </div>
                       ) : (
                         <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#FFFAEB]/85 border border-[#FEDF89] text-[#B54708] w-fit text-[10px] font-medium shadow-xs">
@@ -512,7 +532,8 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               1. Performance Lane
             </h3>
             <p className="text-[13px] text-[#667085] leading-relaxed font-sans">
-              Assesses semantic grounding against retrieved RAG context and calculates the Certainty-Support Mismatch to intercept hallucinated assertions.
+              Assesses semantic grounding against retrieved RAG context and calculates the
+              Certainty-Support Mismatch to intercept hallucinated assertions.
             </p>
           </div>
 
@@ -526,7 +547,8 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               2. Cost &amp; Telemetry Lane
             </h3>
             <p className="text-[13px] text-[#667085] leading-relaxed font-sans">
-              Tracks token and latency Z-scores against baseline empirical distributions, capturing runaway recursive tool loops and token bloat.
+              Tracks token and latency Z-scores against baseline empirical distributions, capturing
+              runaway recursive tool loops and token bloat.
             </p>
           </div>
 
@@ -540,7 +562,8 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               3. Responsibility Lane
             </h3>
             <p className="text-[13px] text-[#667085] leading-relaxed font-sans">
-              Scans for sensitive PII entities (SSN, Email, Phone, Credit Cards), demographic bias flags, and regulatory compliance rulesets (EU AI Act, HIPAA).
+              Scans for sensitive PII entities (SSN, Email, Phone, Credit Cards), demographic bias
+              flags, and regulatory compliance rulesets (EU AI Act, HIPAA).
             </p>
           </div>
         </div>

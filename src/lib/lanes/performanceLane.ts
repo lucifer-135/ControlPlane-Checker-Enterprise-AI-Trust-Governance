@@ -61,7 +61,7 @@ export function evaluatePerformanceLane(
   retrievedContext: string | null,
   response: string,
   _useCase: UseCaseId,
-  hallucinationCutoff: number = 0.4
+  hallucinationCutoff: number = 0.4,
 ): PerformanceLaneResult {
   const respLower = response.toLowerCase();
   const triggeringSpans: SpanHighlight[] = [];
@@ -192,7 +192,7 @@ export function evaluatePerformanceLane(
   // If certainty is high (e.g. 0.9) and groundedness is low (e.g. 0.1), mismatch is very high
   const certaintySupportMismatch = Math.max(
     0.0,
-    Math.min(1.0, certaintyScore * (1.0 - groundednessScore))
+    Math.min(1.0, certaintyScore * (1.0 - groundednessScore)),
   );
 
   const isConfidentlyWrong = certaintyScore >= 0.7 && groundednessScore <= 0.35;
@@ -205,7 +205,8 @@ export function evaluatePerformanceLane(
     riskScore = Math.min(1.0, riskScore + 0.3);
   }
 
-  let explanation = 'Response is firmly grounded in retrieved governance context with appropriate certainty bounds.';
+  let explanation =
+    'Response is firmly grounded in retrieved governance context with appropriate certainty bounds.';
   if (isConfidentlyWrong) {
     explanation = `Critical Confidently Wrong signature: AI asserts high certainty (${(certaintyScore * 100).toFixed(0)}%) despite near-zero context support (${(groundednessScore * 100).toFixed(0)}%).`;
   } else if (groundednessScore < hallucinationCutoff) {

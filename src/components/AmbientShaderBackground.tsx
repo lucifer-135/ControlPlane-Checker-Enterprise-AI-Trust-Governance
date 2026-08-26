@@ -14,7 +14,9 @@ export const AmbientShaderBackground: React.FC = React.memo(() => {
 
     let animFrameId: number;
 
-    const gl = canvas.getContext('webgl') || (canvas.getContext('experimental-webgl') as WebGLRenderingContext | null);
+    const gl =
+      canvas.getContext('webgl') ||
+      (canvas.getContext('experimental-webgl') as WebGLRenderingContext | null);
     if (!gl) return;
 
     const prefersReducedMotion =
@@ -160,7 +162,7 @@ export const AmbientShaderBackground: React.FC = React.memo(() => {
     gl.bufferData(
       gl.ARRAY_BUFFER,
       new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]),
-      gl.STATIC_DRAW
+      gl.STATIC_DRAW,
     );
 
     const posAttr = gl.getAttribLocation(program, 'a_position');

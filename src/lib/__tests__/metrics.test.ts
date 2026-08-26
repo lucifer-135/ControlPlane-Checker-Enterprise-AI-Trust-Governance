@@ -80,7 +80,12 @@ describe('Metrics', () => {
       const matrix = computeConfusionMatrix(interactions, evaluations);
 
       expect(matrix.total_evaluated).toBe(3);
-      expect(matrix.true_positives + matrix.false_positives + matrix.true_negatives + matrix.false_negatives).toBe(3);
+      expect(
+        matrix.true_positives +
+          matrix.false_positives +
+          matrix.true_negatives +
+          matrix.false_negatives,
+      ).toBe(3);
 
       // Basic sanity: precision, recall, accuracy should be numbers
       expect(typeof matrix.precision).toBe('number');

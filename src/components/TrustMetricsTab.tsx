@@ -4,12 +4,7 @@
  */
 
 import React, { useState, useMemo } from 'react';
-import {
-  EvaluationResult,
-  PolicyProfile,
-  SyntheticInteraction,
-  UseCaseId,
-} from '../types';
+import { EvaluationResult, PolicyProfile, SyntheticInteraction, UseCaseId } from '../types';
 import {
   computeConfusionMatrix,
   generateTradeoffCurve,
@@ -67,7 +62,7 @@ export const TrustMetricsTab: React.FC<TrustMetricsTabProps> = ({
     return computeConfusionMatrix(
       interactions,
       evaluations,
-      activeUseCase === 'ALL' ? undefined : activeUseCase
+      activeUseCase === 'ALL' ? undefined : activeUseCase,
     );
   }, [interactions, evaluations, activeUseCase]);
 
@@ -76,7 +71,7 @@ export const TrustMetricsTab: React.FC<TrustMetricsTabProps> = ({
     return generateTradeoffCurve(
       interactions,
       policyProfiles,
-      activeUseCase === 'ALL' ? undefined : activeUseCase
+      activeUseCase === 'ALL' ? undefined : activeUseCase,
     );
   }, [interactions, policyProfiles, activeUseCase]);
 
@@ -85,7 +80,7 @@ export const TrustMetricsTab: React.FC<TrustMetricsTabProps> = ({
     return getConfusionMatrixItems(
       interactions,
       evaluations,
-      activeUseCase === 'ALL' ? undefined : activeUseCase
+      activeUseCase === 'ALL' ? undefined : activeUseCase,
     );
   }, [interactions, evaluations, activeUseCase]);
 
@@ -115,7 +110,11 @@ export const TrustMetricsTab: React.FC<TrustMetricsTabProps> = ({
               </span>
             </div>
             <p className="text-xs text-[#475467] mt-2 max-w-2xl leading-relaxed font-sans">
-              Governance is a calibrated dial, not a binary switch. Drag the slider below to watch the live trade-off between <strong className="text-[#B54708]">Alert Fatigue (False Positives)</strong> and <strong className="text-[#B42318]">Compliance Liability (False Negatives)</strong> shift against our labeled ground-truth dataset in real time.
+              Governance is a calibrated dial, not a binary switch. Drag the slider below to watch
+              the live trade-off between{' '}
+              <strong className="text-[#B54708]">Alert Fatigue (False Positives)</strong> and{' '}
+              <strong className="text-[#B42318]">Compliance Liability (False Negatives)</strong>{' '}
+              shift against our labeled ground-truth dataset in real time.
             </p>
           </div>
 
@@ -182,7 +181,9 @@ export const TrustMetricsTab: React.FC<TrustMetricsTabProps> = ({
             />
             <div className="flex justify-between font-mono tnum text-[11px] text-[#667085] pt-1">
               <span className="text-[#667085] font-semibold">0.20 (Strict / Low risk)</span>
-              <span className="text-[#4F46E5] font-bold bg-white border border-[#C7D2FE] px-2.5 py-0.5 rounded-md shadow-xs">Active Cutoff: {sliderVal.toFixed(2)}</span>
+              <span className="text-[#4F46E5] font-bold bg-white border border-[#C7D2FE] px-2.5 py-0.5 rounded-md shadow-xs">
+                Active Cutoff: {sliderVal.toFixed(2)}
+              </span>
               <span className="text-[#667085] font-semibold">0.85 (Permissive / High risk)</span>
             </div>
           </div>
@@ -192,30 +193,44 @@ export const TrustMetricsTab: React.FC<TrustMetricsTabProps> = ({
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
           {/* False Positive Rate */}
           <div className="glass-inset rounded-2xl p-4">
-            <span className="text-[10px] text-[#475467] font-semibold block">False Positive Rate</span>
+            <span className="text-[10px] text-[#475467] font-semibold block">
+              False Positive Rate
+            </span>
             <div className="mt-1 flex items-baseline space-x-1.5">
               <span className="text-xl font-bold text-[#B54708] font-headline tnum">
                 {confusionMatrix.fp_rate}%
               </span>
-              <span className="text-[10px] text-[#98A2B3] tnum">({confusionMatrix.false_positives})</span>
+              <span className="text-[10px] text-[#98A2B3] tnum">
+                ({confusionMatrix.false_positives})
+              </span>
             </div>
             <div className="mt-2 h-1.5 w-full bg-white/60 rounded-full overflow-hidden">
-              <div className="h-full bg-[#F79009]" style={{ width: `${Math.min(confusionMatrix.fp_rate, 100)}%` }}></div>
+              <div
+                className="h-full bg-[#F79009]"
+                style={{ width: `${Math.min(confusionMatrix.fp_rate, 100)}%` }}
+              ></div>
             </div>
             <p className="mt-2 text-[10px] text-[#667085]">Alert fatigue risk</p>
           </div>
 
           {/* False Negative Rate */}
           <div className="glass-inset rounded-2xl p-4">
-            <span className="text-[10px] text-[#475467] font-semibold block">False Negative Rate</span>
+            <span className="text-[10px] text-[#475467] font-semibold block">
+              False Negative Rate
+            </span>
             <div className="mt-1 flex items-baseline space-x-1.5">
               <span className="text-xl font-bold text-[#B42318] font-headline tnum">
                 {confusionMatrix.fn_rate}%
               </span>
-              <span className="text-[10px] text-[#98A2B3] tnum">({confusionMatrix.false_negatives})</span>
+              <span className="text-[10px] text-[#98A2B3] tnum">
+                ({confusionMatrix.false_negatives})
+              </span>
             </div>
             <div className="mt-2 h-1.5 w-full bg-white/60 rounded-full overflow-hidden">
-              <div className="h-full bg-[#F04438]" style={{ width: `${Math.min(confusionMatrix.fn_rate, 100)}%` }}></div>
+              <div
+                className="h-full bg-[#F04438]"
+                style={{ width: `${Math.min(confusionMatrix.fn_rate, 100)}%` }}
+              ></div>
             </div>
             <p className="mt-2 text-[10px] text-[#667085]">Compliance risk</p>
           </div>
@@ -227,7 +242,10 @@ export const TrustMetricsTab: React.FC<TrustMetricsTabProps> = ({
               {confusionMatrix.precision}%
             </div>
             <div className="mt-2 h-1.5 w-full bg-white/60 rounded-full overflow-hidden">
-              <div className="h-full bg-[#12B76A]" style={{ width: `${Math.min(confusionMatrix.precision, 100)}%` }}></div>
+              <div
+                className="h-full bg-[#12B76A]"
+                style={{ width: `${Math.min(confusionMatrix.precision, 100)}%` }}
+              ></div>
             </div>
             <p className="mt-2 text-[10px] text-[#667085]">TP / (TP + FP)</p>
           </div>
@@ -239,7 +257,10 @@ export const TrustMetricsTab: React.FC<TrustMetricsTabProps> = ({
               {confusionMatrix.recall}%
             </div>
             <div className="mt-2 h-1.5 w-full bg-white/60 rounded-full overflow-hidden">
-              <div className="h-full bg-[#2E90FA]" style={{ width: `${Math.min(confusionMatrix.recall, 100)}%` }}></div>
+              <div
+                className="h-full bg-[#2E90FA]"
+                style={{ width: `${Math.min(confusionMatrix.recall, 100)}%` }}
+              ></div>
             </div>
             <p className="mt-2 text-[10px] text-[#667085]">TP / (TP + FN)</p>
           </div>
@@ -251,7 +272,10 @@ export const TrustMetricsTab: React.FC<TrustMetricsTabProps> = ({
               {confusionMatrix.f1_score}%
             </div>
             <div className="mt-2 h-1.5 w-full bg-white/60 rounded-full overflow-hidden">
-              <div className="h-full bg-[#7A5AF8]" style={{ width: `${Math.min(confusionMatrix.f1_score, 100)}%` }}></div>
+              <div
+                className="h-full bg-[#7A5AF8]"
+                style={{ width: `${Math.min(confusionMatrix.f1_score, 100)}%` }}
+              ></div>
             </div>
             <p className="mt-2 text-[10px] text-[#667085]">Harmonic balance</p>
           </div>
@@ -263,16 +287,25 @@ export const TrustMetricsTab: React.FC<TrustMetricsTabProps> = ({
               <span className="text-xl font-bold text-[#101828] font-headline tnum">
                 {confusionMatrix.true_positives + confusionMatrix.false_positives}
               </span>
-              <span className="text-[10px] text-[#98A2B3] tnum">/ {confusionMatrix.total_evaluated}</span>
+              <span className="text-[10px] text-[#98A2B3] tnum">
+                / {confusionMatrix.total_evaluated}
+              </span>
             </div>
             <div className="mt-2 h-1.5 w-full bg-white/60 rounded-full overflow-hidden">
               <div
                 className="h-full bg-[#F04438]"
-                style={{ width: `${((confusionMatrix.true_positives + confusionMatrix.false_positives) / confusionMatrix.total_evaluated) * 100}%` }}
+                style={{
+                  width: `${((confusionMatrix.true_positives + confusionMatrix.false_positives) / confusionMatrix.total_evaluated) * 100}%`,
+                }}
               ></div>
             </div>
             <p className="mt-2 text-[10px] text-[#667085]">
-              {(((confusionMatrix.true_positives + confusionMatrix.false_positives) / confusionMatrix.total_evaluated) * 100).toFixed(0)}% of traffic
+              {(
+                ((confusionMatrix.true_positives + confusionMatrix.false_positives) /
+                  confusionMatrix.total_evaluated) *
+                100
+              ).toFixed(0)}
+              % of traffic
             </p>
           </div>
         </div>
@@ -287,18 +320,22 @@ export const TrustMetricsTab: React.FC<TrustMetricsTabProps> = ({
               Precision-Recall Tradeoff Sweep Curve
             </h3>
             <p className="text-xs text-[#667085] mt-1 font-sans">
-              False Positive Rate (FPR) vs False Negative Rate (FNR) vs F1 Score on current benchmark
+              False Positive Rate (FPR) vs False Negative Rate (FNR) vs F1 Score on current
+              benchmark
             </p>
           </div>
           <div className="flex items-center space-x-5 text-xs">
             <span className="flex items-center text-[#475467] font-medium">
-              <span className="w-2.5 h-2.5 rounded-full bg-[#F79009] mr-1.5 shadow-xs"></span> FPR (Alert Fatigue)
+              <span className="w-2.5 h-2.5 rounded-full bg-[#F79009] mr-1.5 shadow-xs"></span> FPR
+              (Alert Fatigue)
             </span>
             <span className="flex items-center text-[#475467] font-medium">
-              <span className="w-2.5 h-2.5 rounded-full bg-[#2E90FA] mr-1.5 shadow-xs"></span> FNR (Liability)
+              <span className="w-2.5 h-2.5 rounded-full bg-[#2E90FA] mr-1.5 shadow-xs"></span> FNR
+              (Liability)
             </span>
             <span className="flex items-center text-[#475467] font-medium">
-              <span className="w-2.5 h-2.5 rounded-full bg-[#12B76A] mr-1.5 shadow-xs"></span> F1 Score
+              <span className="w-2.5 h-2.5 rounded-full bg-[#12B76A] mr-1.5 shadow-xs"></span> F1
+              Score
             </span>
           </div>
         </div>
@@ -306,16 +343,19 @@ export const TrustMetricsTab: React.FC<TrustMetricsTabProps> = ({
         {/* Recharts Chart Container */}
         <div className="h-80 sm:h-96 w-full pt-2">
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart
-              data={tradeoffCurveData}
-              margin={{ top: 25, right: 30, left: 0, bottom: 8 }}
-            >
+            <LineChart data={tradeoffCurveData} margin={{ top: 25, right: 30, left: 0, bottom: 8 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(213, 218, 225, 0.6)" />
               <XAxis
                 dataKey="threshold"
                 stroke="#98A2B3"
                 tick={{ fill: '#667085', fontSize: 11 }}
-                label={{ value: 'Decision Threshold →', position: 'insideBottom', offset: -4, fill: '#667085', fontSize: 11 }}
+                label={{
+                  value: 'Decision Threshold →',
+                  position: 'insideBottom',
+                  offset: -4,
+                  fill: '#667085',
+                  fontSize: 11,
+                }}
               />
               <YAxis
                 stroke="#98A2B3"
@@ -331,7 +371,8 @@ export const TrustMetricsTab: React.FC<TrustMetricsTabProps> = ({
                   borderRadius: '0.75rem',
                   fontSize: '12px',
                   color: '#344054',
-                  boxShadow: '0 12px 24px -8px rgba(16, 24, 40, 0.12), 0 4px 8px -4px rgba(16, 24, 40, 0.08)',
+                  boxShadow:
+                    '0 12px 24px -8px rgba(16, 24, 40, 0.12), 0 4px 8px -4px rgba(16, 24, 40, 0.08)',
                 }}
                 labelStyle={{ color: '#101828', fontWeight: 600 }}
                 itemStyle={{ color: '#344054' }}
@@ -429,7 +470,8 @@ export const TrustMetricsTab: React.FC<TrustMetricsTabProps> = ({
                 </span>
               </div>
               <p className="text-xs text-[#475467] mt-2 leading-relaxed font-sans">
-                Truly Violating AI Responses correctly <strong className="text-[#067647]">Blocked &amp; Escalated</strong>.
+                Truly Violating AI Responses correctly{' '}
+                <strong className="text-[#067647]">Blocked &amp; Escalated</strong>.
               </p>
             </div>
 
@@ -452,7 +494,8 @@ export const TrustMetricsTab: React.FC<TrustMetricsTabProps> = ({
                 </span>
               </div>
               <p className="text-xs text-[#475467] mt-2 leading-relaxed font-sans">
-                Safe/Clean Responses that were unnecessarily <strong className="text-[#B54708]">Blocked</strong> (Alert Fatigue).
+                Safe/Clean Responses that were unnecessarily{' '}
+                <strong className="text-[#B54708]">Blocked</strong> (Alert Fatigue).
               </p>
             </div>
 
@@ -475,7 +518,8 @@ export const TrustMetricsTab: React.FC<TrustMetricsTabProps> = ({
                 </span>
               </div>
               <p className="text-xs text-[#475467] mt-2 leading-relaxed font-sans">
-                Dangerous/Violating Responses that were mistakenly <strong className="text-[#B42318]">Allowed</strong> (Liability).
+                Dangerous/Violating Responses that were mistakenly{' '}
+                <strong className="text-[#B42318]">Allowed</strong> (Liability).
               </p>
             </div>
 
@@ -498,7 +542,8 @@ export const TrustMetricsTab: React.FC<TrustMetricsTabProps> = ({
                 </span>
               </div>
               <p className="text-xs text-[#475467] mt-2 leading-relaxed font-sans">
-                Clean Responses that safely reached users (<strong className="text-[#344054]">Allowed</strong>).
+                Clean Responses that safely reached users (
+                <strong className="text-[#344054]">Allowed</strong>).
               </p>
             </div>
           </div>
@@ -511,7 +556,9 @@ export const TrustMetricsTab: React.FC<TrustMetricsTabProps> = ({
               </span>
               <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
                 {quadrantItems[selectedQuadrant].length === 0 ? (
-                  <p className="text-xs text-[#667085] italic py-2">No interactions in this quadrant.</p>
+                  <p className="text-xs text-[#667085] italic py-2">
+                    No interactions in this quadrant.
+                  </p>
                 ) : (
                   quadrantItems[selectedQuadrant].map((item) => (
                     <div
@@ -524,7 +571,9 @@ export const TrustMetricsTab: React.FC<TrustMetricsTabProps> = ({
                           <span>·</span>
                           <span>{item.use_case}</span>
                           <span>·</span>
-                          <span className="text-[#B54708]">Truth: {item.ground_truth_labels.join(', ')}</span>
+                          <span className="text-[#B54708]">
+                            Truth: {item.ground_truth_labels.join(', ')}
+                          </span>
                         </div>
                         <p className="text-[#475467] truncate text-xs font-sans">{item.prompt}</p>
                       </div>
@@ -547,7 +596,13 @@ export const TrustMetricsTab: React.FC<TrustMetricsTabProps> = ({
               Governance Report (FR-24)
             </h4>
             <p className="text-xs text-[#475467] leading-relaxed font-sans">
-              Against our 28-record benchmark dataset, the checker achieves a <strong className="text-[#067647]">{confusionMatrix.f1_score}% F1 score</strong> with a <strong className="text-[#B42318]">{confusionMatrix.fn_rate}% False Negative rate</strong>.
+              Against our 28-record benchmark dataset, the checker achieves a{' '}
+              <strong className="text-[#067647]">{confusionMatrix.f1_score}% F1 score</strong> with
+              a{' '}
+              <strong className="text-[#B42318]">
+                {confusionMatrix.fn_rate}% False Negative rate
+              </strong>
+              .
             </p>
             <div className="glass-inset rounded-xl p-4 text-xs space-y-2 text-[#475467] font-mono tnum">
               <div className="flex justify-between">
@@ -570,7 +625,9 @@ export const TrustMetricsTab: React.FC<TrustMetricsTabProps> = ({
               Observability Takeaway
             </span>
             <p className="text-xs text-[#475467] leading-relaxed italic font-sans">
-              "We didn't build a black-box censor. We built an observability plane with a calibrated dial. Moving the threshold makes the cost of trust transparent to executive stakeholders."
+              "We didn't build a black-box censor. We built an observability plane with a calibrated
+              dial. Moving the threshold makes the cost of trust transparent to executive
+              stakeholders."
             </p>
           </div>
         </div>

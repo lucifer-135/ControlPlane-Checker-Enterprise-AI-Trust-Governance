@@ -20,10 +20,7 @@ describe('Responsibility Lane Evaluator', () => {
     });
 
     it('should redact SSN in the response', () => {
-      const result = evaluateResponsibilityLane(
-        'SSN: 123-45-6789',
-        'EU_AI_ACT_STANDARD',
-      );
+      const result = evaluateResponsibilityLane('SSN: 123-45-6789', 'EU_AI_ACT_STANDARD');
 
       expect(result.redacted_response).toContain('[REDACTED_SSN]');
       expect(result.redacted_response).not.toContain('123-45-6789');
@@ -55,10 +52,7 @@ describe('Responsibility Lane Evaluator', () => {
 
   describe('PII Detection — Phone', () => {
     it('should detect phone number patterns', () => {
-      const result = evaluateResponsibilityLane(
-        'Call us at (555) 123-4567.',
-        'EU_AI_ACT_STANDARD',
-      );
+      const result = evaluateResponsibilityLane('Call us at (555) 123-4567.', 'EU_AI_ACT_STANDARD');
 
       expect(result.pii_detected.some((p) => p.type === 'PHONE')).toBe(true);
     });
@@ -125,10 +119,7 @@ describe('Responsibility Lane Evaluator', () => {
     });
 
     it('should flag HIPAA/FINRA violations for SSN under US ruleset', () => {
-      const result = evaluateResponsibilityLane(
-        'Customer SSN: 123-45-6789',
-        'US_HIPAA_FINRA',
-      );
+      const result = evaluateResponsibilityLane('Customer SSN: 123-45-6789', 'US_HIPAA_FINRA');
 
       expect(result.policy_violations.some((v) => v.includes('HIPAA') || v.includes('FINRA'))).toBe(
         true,
@@ -136,14 +127,13 @@ describe('Responsibility Lane Evaluator', () => {
     });
 
     it('should flag DPDPA violations for PII under India ruleset', () => {
-      const result = evaluateResponsibilityLane(
-        'Contact info: user@example.in',
-        'INDIA_DPDP_ACT',
-      );
+      const result = evaluateResponsibilityLane('Contact info: user@example.in', 'INDIA_DPDP_ACT');
 
-      expect(result.policy_violations.some((v) => v.includes('DPDPA') || v.includes('Digital Personal Data'))).toBe(
-        true,
-      );
+      expect(
+        result.policy_violations.some(
+          (v) => v.includes('DPDPA') || v.includes('Digital Personal Data'),
+        ),
+      ).toBe(true);
     });
   });
 
@@ -164,10 +154,7 @@ describe('Responsibility Lane Evaluator', () => {
 
   describe('Return Shape', () => {
     it('should return all required fields with correct types', () => {
-      const result = evaluateResponsibilityLane(
-        'Test response content.',
-        'EU_AI_ACT_STANDARD',
-      );
+      const result = evaluateResponsibilityLane('Test response content.', 'EU_AI_ACT_STANDARD');
 
       expect(result.lane).toBe('responsibility');
       expect(Array.isArray(result.pii_detected)).toBe(true);

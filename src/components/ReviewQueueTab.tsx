@@ -107,7 +107,8 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
       reviewed_at: new Date().toISOString(),
       reviewer: 'Meera S. (Frontline Compliance Lead)',
       action: 'CONFIRM_BLOCK',
-      notes: reviewNotes[item.id] || 'Confirmed high-risk violation; output withheld from end-user.',
+      notes:
+        reviewNotes[item.id] || 'Confirmed high-risk violation; output withheld from end-user.',
       original_verdict: evalRes.verdict,
       new_verdict: 'BLOCK_ESCALATE',
       primary_trigger_lane: evalRes.overlapping_lanes[0] || 'Responsibility',
@@ -122,7 +123,8 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
       reviewed_at: new Date().toISOString(),
       reviewer: 'Meera S. (Frontline Compliance Lead)',
       action: 'OVERRIDE_ALLOW',
-      notes: reviewNotes[item.id] || 'Reviewer manual override: safe in context / false positive alert.',
+      notes:
+        reviewNotes[item.id] || 'Reviewer manual override: safe in context / false positive alert.',
       original_verdict: evalRes.verdict,
       new_verdict: 'ALLOW',
       primary_trigger_lane: evalRes.overlapping_lanes[0] || 'Performance',
@@ -142,7 +144,8 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
       reviewed_at: new Date().toISOString(),
       reviewer: 'Meera S. (Frontline Compliance Lead)',
       action: 'EDIT_ALLOW',
-      notes: reviewNotes[item.id] || 'Sanitized response approved (PII redacted / claim corrected).',
+      notes:
+        reviewNotes[item.id] || 'Sanitized response approved (PII redacted / claim corrected).',
       edited_response: editedText,
       original_verdict: evalRes.verdict,
       new_verdict: 'ALLOW',
@@ -155,9 +158,10 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
   // Feedback & Threshold Drift calculations
   const totalReviewed = reviewDecisions.length;
   const totalOverrides = reviewDecisions.filter(
-    (d) => d.action === 'OVERRIDE_ALLOW' || d.action === 'EDIT_ALLOW'
+    (d) => d.action === 'OVERRIDE_ALLOW' || d.action === 'EDIT_ALLOW',
   ).length;
-  const overrideRate = totalReviewed > 0 ? ((totalOverrides / totalReviewed) * 100).toFixed(1) : '0.0';
+  const overrideRate =
+    totalReviewed > 0 ? ((totalOverrides / totalReviewed) * 100).toFixed(1) : '0.0';
 
   const renderHighlightedResponse = (response: string, evalRes: EvaluationResult) => {
     const spans = [
@@ -211,17 +215,20 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
           const matchingSpan = sortedSpans.find(
             (s) =>
               s.text.toLowerCase() === part.toLowerCase() ||
-              s.text.replace(/[$,]/g, '').toLowerCase() === part.replace(/[$,]/g, '').toLowerCase()
+              s.text.replace(/[$,]/g, '').toLowerCase() === part.replace(/[$,]/g, '').toLowerCase(),
           );
 
           if (matchingSpan) {
-            let bgClass = 'bg-[#FEF3F2] text-[#B42318] border border-[#FECDCA] font-semibold px-1.5 py-0.5 rounded shadow-xs';
+            let bgClass =
+              'bg-[#FEF3F2] text-[#B42318] border border-[#FECDCA] font-semibold px-1.5 py-0.5 rounded shadow-xs';
             let badgeLabel = 'HALLUCINATION';
             if (matchingSpan.type === 'bias') {
-              bgClass = 'bg-[#F4F3FF] text-[#6941C6] border border-[#D9D6FE] font-semibold px-1.5 py-0.5 rounded shadow-xs';
+              bgClass =
+                'bg-[#F4F3FF] text-[#6941C6] border border-[#D9D6FE] font-semibold px-1.5 py-0.5 rounded shadow-xs';
               badgeLabel = 'BIAS / STEREOTYPE';
             } else if (matchingSpan.type === 'pii') {
-              bgClass = 'bg-[#FFFAEB] text-[#B54708] border border-[#FEDF89] font-semibold px-1.5 py-0.5 rounded shadow-xs';
+              bgClass =
+                'bg-[#FFFAEB] text-[#B54708] border border-[#FEDF89] font-semibold px-1.5 py-0.5 rounded shadow-xs';
               badgeLabel = 'PII EXPOSURE';
             }
 
@@ -256,7 +263,9 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
               <span className="font-display text-4xl sm:text-5xl font-semibold text-[#101828] tracking-tight leading-none tnum">
                 {pendingInteractions.length}
               </span>
-              <span className="font-mono text-xs text-[#667085] tnum">of {escalatedInteractions.length} total</span>
+              <span className="font-mono text-xs text-[#667085] tnum">
+                of {escalatedInteractions.length} total
+              </span>
             </div>
             <div className="mt-3.5 pt-3 border-t border-slate-200 flex items-center justify-between gap-3">
               <label className="relative inline-flex items-center gap-2.5 cursor-pointer select-none group">
@@ -291,9 +300,7 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
         <div className="glass-panel glass-hover rounded-2xl p-6 flex flex-col justify-between relative overflow-hidden">
           <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/10 rounded-full blur-2xl pointer-events-none -z-10" />
           <div className="flex items-center justify-between">
-            <span className="text-[13px] text-[#475467] font-medium">
-              Review feedback metrics
-            </span>
+            <span className="text-[13px] text-[#475467] font-medium">Review feedback metrics</span>
             <div className="p-1.5 rounded-xl bg-[#EFF6FF] border border-[#B2DDFF]">
               <History className="h-4 w-4 text-[#2E90FA]" />
             </div>
@@ -301,11 +308,15 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
           <div className="my-2 grid grid-cols-2 gap-4">
             <div className="glass-inset p-3 rounded-xl">
               <span className="text-[11px] text-[#667085] block font-medium">Total reviewed</span>
-              <p className="font-display text-3xl font-semibold text-[#101828] tracking-tight mt-0.5 tnum">{totalReviewed}</p>
+              <p className="font-display text-3xl font-semibold text-[#101828] tracking-tight mt-0.5 tnum">
+                {totalReviewed}
+              </p>
             </div>
             <div className="glass-inset p-3 rounded-xl">
               <span className="text-[11px] text-[#667085] block font-medium">Override rate</span>
-              <p className="font-display text-3xl font-semibold text-[#B54708] tracking-tight mt-0.5 tnum">{overrideRate}%</p>
+              <p className="font-display text-3xl font-semibold text-[#B54708] tracking-tight mt-0.5 tnum">
+                {overrideRate}%
+              </p>
             </div>
           </div>
           <p className="text-xs text-[#667085] pt-3 border-t border-slate-200 leading-relaxed">
@@ -369,15 +380,13 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
                 key={item.id}
                 id={`queue-item-${item.id}`}
                 className={`glass-panel rounded-2xl overflow-hidden transition-all duration-300 border-l-4 ${
-                  evalRes.verdict === 'BLOCK_ESCALATE'
-                    ? 'border-l-[#F04438]'
-                    : 'border-l-[#DC6803]'
+                  evalRes.verdict === 'BLOCK_ESCALATE' ? 'border-l-[#F04438]' : 'border-l-[#DC6803]'
                 } ${
                   isHighlighted
                     ? 'border-[#4F46E5] ring-4 ring-[#EEF0FE] shadow-lg'
                     : isExpanded
-                    ? 'border-[#4F46E5] ring-1 ring-[#4F46E5]/20 shadow-md'
-                    : 'hover:border-white'
+                      ? 'border-[#4F46E5] ring-1 ring-[#4F46E5]/20 shadow-md'
+                      : 'hover:border-white'
                 }`}
               >
                 {/* Item Card Header (Clickable Dropdown Toggle) */}
@@ -391,15 +400,19 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
                   {/* Left: Metadata & Prompt Summary */}
                   <div className="space-y-1.5 flex-1 min-w-0">
                     <div className="flex items-center flex-wrap gap-2.5 text-xs">
-                      <span className="font-mono text-sm font-semibold text-[#101828] tnum">{item.id}</span>
+                      <span className="font-mono text-sm font-semibold text-[#101828] tnum">
+                        {item.id}
+                      </span>
                       <span className="px-2.5 py-0.5 rounded-lg glass-inset text-[#344054] font-medium text-[11px]">
                         {item.use_case === 'decision_support'
                           ? 'Decision Support'
                           : item.use_case === 'internal_copilot'
-                          ? 'Internal Copilot'
-                          : 'Support Bot'}
+                            ? 'Internal Copilot'
+                            : 'Support Bot'}
                       </span>
-                      <span className="font-mono text-[#98A2B3] text-xs tnum">{item.session_id}</span>
+                      <span className="font-mono text-[#98A2B3] text-xs tnum">
+                        {item.session_id}
+                      </span>
                       {evalRes.has_multi_lane_overlap && (
                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-lg text-[10px] font-medium bg-[#FFFAEB]/85 border border-[#FEDF89] text-[#B54708] shadow-xs">
                           <Layers className="h-3 w-3 mr-1 text-[#DC6803]" />
@@ -428,7 +441,11 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
                       title={isExpanded ? 'Collapse dropdown' : 'Expand dropdown'}
                       aria-label={isExpanded ? 'Collapse dropdown' : 'Expand dropdown'}
                     >
-                      {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                      {isExpanded ? (
+                        <ChevronUp className="h-4 w-4" />
+                      ) : (
+                        <ChevronDown className="h-4 w-4" />
+                      )}
                     </button>
                   </div>
                 </div>
@@ -445,22 +462,36 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
                       <ul className="list-disc list-inside text-[#344054] space-y-1 text-xs font-sans">
                         {evalRes.performance.is_confidently_wrong && (
                           <li>
-                            <span className="font-semibold text-[#175CD3]">Performance:</span> Confidently wrong claim detected with {(evalRes.performance.certainty_score * 100).toFixed(0)}% asserted confidence vs {(evalRes.performance.groundedness_score * 100).toFixed(0)}% context support.
+                            <span className="font-semibold text-[#175CD3]">Performance:</span>{' '}
+                            Confidently wrong claim detected with{' '}
+                            {(evalRes.performance.certainty_score * 100).toFixed(0)}% asserted
+                            confidence vs{' '}
+                            {(evalRes.performance.groundedness_score * 100).toFixed(0)}% context
+                            support.
                           </li>
                         )}
                         {evalRes.responsibility.pii_detected.length > 0 && (
                           <li>
-                            <span className="font-semibold text-[#6941C6]">Responsibility (PII):</span> Disclosed {evalRes.responsibility.pii_detected.length} unredacted sensitive entity instance(s): {evalRes.responsibility.pii_detected.map((p) => p.type).join(', ')}.
+                            <span className="font-semibold text-[#6941C6]">
+                              Responsibility (PII):
+                            </span>{' '}
+                            Disclosed {evalRes.responsibility.pii_detected.length} unredacted
+                            sensitive entity instance(s):{' '}
+                            {evalRes.responsibility.pii_detected.map((p) => p.type).join(', ')}.
                           </li>
                         )}
                         {evalRes.responsibility.bias_flags.length > 0 && (
                           <li>
-                            <span className="font-semibold text-[#6941C6]">Responsibility (Bias):</span> {evalRes.responsibility.bias_flags.join(', ')}.
+                            <span className="font-semibold text-[#6941C6]">
+                              Responsibility (Bias):
+                            </span>{' '}
+                            {evalRes.responsibility.bias_flags.join(', ')}.
                           </li>
                         )}
                         {evalRes.cost.is_outlier && (
                           <li>
-                            <span className="font-semibold text-[#B54708]">Cost:</span> High resource anomaly (Z-Score: {evalRes.cost.combined_z_score}).
+                            <span className="font-semibold text-[#B54708]">Cost:</span> High
+                            resource anomaly (Z-Score: {evalRes.cost.combined_z_score}).
                           </li>
                         )}
                       </ul>
@@ -626,13 +657,17 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
             Append-Only Review Decision Audit Trail (FR-20 / FR-25)
           </h3>
           <span className="text-xs text-[#667085] whitespace-nowrap font-medium">
-            <span className="font-mono tnum text-[#475467] font-semibold">{reviewDecisions.length}</span> recorded decisions
+            <span className="font-mono tnum text-[#475467] font-semibold">
+              {reviewDecisions.length}
+            </span>{' '}
+            recorded decisions
           </span>
         </div>
 
         {reviewDecisions.length === 0 ? (
           <p className="text-[13px] text-[#667085] py-8 text-center">
-            No manual triage decisions recorded yet in this session. Triage items above to populate the audit log.
+            No manual triage decisions recorded yet in this session. Triage items above to populate
+            the audit log.
           </p>
         ) : (
           <div className="overflow-x-auto glass-inset rounded-xl">
@@ -653,7 +688,9 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
                     <td className="py-3 px-4 font-mono tnum text-[#667085]">
                       {new Date(d.reviewed_at).toLocaleTimeString()}
                     </td>
-                    <td className="py-3 px-4 font-mono tnum font-semibold text-[#101828]">{d.interaction_id}</td>
+                    <td className="py-3 px-4 font-mono tnum font-semibold text-[#101828]">
+                      {d.interaction_id}
+                    </td>
                     <td className="py-3 px-4 text-[#344054]">{d.reviewer}</td>
                     <td className="py-3 px-4">
                       <span
@@ -661,8 +698,8 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
                           d.action === 'CONFIRM_BLOCK'
                             ? 'bg-[#FEF3F2]/90 text-[#B42318] border-[#FECDCA]'
                             : d.action === 'EDIT_ALLOW'
-                            ? 'bg-[#EEF0FE]/90 text-[#3F3BAF] border-[#D9D6FE]'
-                            : 'bg-[#ECFDF3]/90 text-[#067647] border-[#ABEFC6]'
+                              ? 'bg-[#EEF0FE]/90 text-[#3F3BAF] border-[#D9D6FE]'
+                              : 'bg-[#ECFDF3]/90 text-[#067647] border-[#ABEFC6]'
                         }`}
                       >
                         {d.action}
@@ -670,14 +707,16 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
                     </td>
                     <td className="py-3 px-4">
                       <div className="flex items-center space-x-2 whitespace-nowrap">
-                        <span className="font-mono text-[11px] text-[#B42318] font-semibold">{d.original_verdict}</span>
+                        <span className="font-mono text-[11px] text-[#B42318] font-semibold">
+                          {d.original_verdict}
+                        </span>
                         <ArrowRight className="h-3.5 w-3.5 text-[#98A2B3] shrink-0" />
-                        <span className="font-mono text-[11px] text-[#067647] font-semibold">{d.new_verdict}</span>
+                        <span className="font-mono text-[11px] text-[#067647] font-semibold">
+                          {d.new_verdict}
+                        </span>
                       </div>
                     </td>
-                    <td className="py-3 px-4 text-[#475467] max-w-xs truncate">
-                      {d.notes}
-                    </td>
+                    <td className="py-3 px-4 text-[#475467] max-w-xs truncate">{d.notes}</td>
                   </tr>
                 ))}
               </tbody>

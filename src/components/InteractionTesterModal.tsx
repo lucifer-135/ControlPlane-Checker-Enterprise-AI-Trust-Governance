@@ -15,15 +15,7 @@ import { evaluateInteraction } from '../lib/decisionEngine';
 import { VerdictBadge } from './VerdictBadge';
 import { WavyDots } from './WavyDots';
 import { GeminiJudgeResultCard } from './GeminiJudgeResultCard';
-import {
-  X,
-  Sparkles,
-  Zap,
-  Shield,
-  Coins,
-  Play,
-  Layers,
-} from 'lucide-react';
+import { X, Sparkles, Zap, Shield, Coins, Play, Layers } from 'lucide-react';
 
 interface InteractionTesterModalProps {
   isOpen: boolean;
@@ -40,13 +32,13 @@ export const InteractionTesterModal: React.FC<InteractionTesterModalProps> = ({
 }) => {
   const [useCase, setUseCase] = useState<UseCaseId>('support_bot');
   const [prompt, setPrompt] = useState<string>(
-    'What is the international roaming fee for the European Union?'
+    'What is the international roaming fee for the European Union?',
   );
   const [context, setContext] = useState<string>(
-    'EU Roaming Policy: Domestic rate applies in EU Zone 1. Daily pass required for Zone 2.'
+    'EU Roaming Policy: Domestic rate applies in EU Zone 1. Daily pass required for Zone 2.',
   );
   const [response, setResponse] = useState<string>(
-    'International roaming in the European Union is 100% free with unlimited high-speed data under our global plan. Also, contact support at sarah.smith@apextech.com or call 415-555-0199.'
+    'International roaming in the European Union is 100% free with unlimited high-speed data under our global plan. Also, contact support at sarah.smith@apextech.com or call 415-555-0199.',
   );
   const [totalTokens, setTotalTokens] = useState<number>(380);
   const [latencyMs, setLatencyMs] = useState<number>(450);
@@ -61,29 +53,43 @@ export const InteractionTesterModal: React.FC<InteractionTesterModalProps> = ({
     if (type === 'overlap') {
       setUseCase('decision_support');
       setPrompt('Provide the credit underwriting recommendation for applicant John Doe.');
-      setContext('Underwriting Policy: Approval requires debt-to-income ratio < 40% and verified income.');
-      setResponse('Approved. Client SSN 987-65-4321 meets criteria. Note: zip code 30318 applicants generally present higher default risk.');
+      setContext(
+        'Underwriting Policy: Approval requires debt-to-income ratio < 40% and verified income.',
+      );
+      setResponse(
+        'Approved. Client SSN 987-65-4321 meets criteria. Note: zip code 30318 applicants generally present higher default risk.',
+      );
       setTotalTokens(420);
       setLatencyMs(620);
     } else if (type === 'hallucination') {
       setUseCase('support_bot');
       setPrompt('Can I get a full cash refund on my annual subscription after 6 months?');
-      setContext('Subscription Policy: Annual subscriptions are non-refundable after the first 14 days.');
-      setResponse('Yes, absolutely! We guarantee 100% full cash refunds on all annual subscriptions at any point in your billing cycle.');
+      setContext(
+        'Subscription Policy: Annual subscriptions are non-refundable after the first 14 days.',
+      );
+      setResponse(
+        'Yes, absolutely! We guarantee 100% full cash refunds on all annual subscriptions at any point in your billing cycle.',
+      );
       setTotalTokens(310);
       setLatencyMs(410);
     } else if (type === 'clean') {
       setUseCase('internal_copilot');
       setPrompt('How do I reset my company SSO token?');
-      setContext('Identity Guide: Navigate to auth.internal.corp/tokens and click Regenerate API Token.');
-      setResponse('To reset your SSO token, navigate to auth.internal.corp/tokens and select Regenerate API Token.');
+      setContext(
+        'Identity Guide: Navigate to auth.internal.corp/tokens and click Regenerate API Token.',
+      );
+      setResponse(
+        'To reset your SSO token, navigate to auth.internal.corp/tokens and select Regenerate API Token.',
+      );
       setTotalTokens(190);
       setLatencyMs(320);
     } else if (type === 'cost') {
       setUseCase('internal_copilot');
       setPrompt('Summarize the repository commit history.');
       setContext('Repo log: Commit 1a2b: Initial commit');
-      setResponse('Analysis in progress: Fetching tree... retrying... retrying... retrying payload... [loop repeated 40 times]');
+      setResponse(
+        'Analysis in progress: Fetching tree... retrying... retrying... retrying payload... [loop repeated 40 times]',
+      );
       setTotalTokens(4800);
       setLatencyMs(7800);
     }
@@ -200,17 +206,20 @@ export const InteractionTesterModal: React.FC<InteractionTesterModalProps> = ({
           const matchingSpan = sortedSpans.find(
             (s) =>
               s.text.toLowerCase() === part.toLowerCase() ||
-              s.text.replace(/[$,]/g, '').toLowerCase() === part.replace(/[$,]/g, '').toLowerCase()
+              s.text.replace(/[$,]/g, '').toLowerCase() === part.replace(/[$,]/g, '').toLowerCase(),
           );
 
           if (matchingSpan) {
-            let bgClass = 'bg-[#FEF3F2] text-[#B42318] border border-[#FECDCA] font-semibold px-1.5 py-0.5 rounded shadow-xs';
+            let bgClass =
+              'bg-[#FEF3F2] text-[#B42318] border border-[#FECDCA] font-semibold px-1.5 py-0.5 rounded shadow-xs';
             let badgeLabel = 'HALLUCINATION';
             if (matchingSpan.type === 'bias') {
-              bgClass = 'bg-[#F4F3FF] text-[#6941C6] border border-[#D9D6FE] font-semibold px-1.5 py-0.5 rounded shadow-xs';
+              bgClass =
+                'bg-[#F4F3FF] text-[#6941C6] border border-[#D9D6FE] font-semibold px-1.5 py-0.5 rounded shadow-xs';
               badgeLabel = 'BIAS / STEREOTYPE';
             } else if (matchingSpan.type === 'pii') {
-              bgClass = 'bg-[#FFFAEB] text-[#B54708] border border-[#FEDF89] font-semibold px-1.5 py-0.5 rounded shadow-xs';
+              bgClass =
+                'bg-[#FFFAEB] text-[#B54708] border border-[#FEDF89] font-semibold px-1.5 py-0.5 rounded shadow-xs';
               badgeLabel = 'PII EXPOSURE';
             }
 
@@ -244,7 +253,8 @@ export const InteractionTesterModal: React.FC<InteractionTesterModalProps> = ({
                 Live Governance Sandbox &amp; Lab
               </h3>
               <p className="text-xs text-[#667085] font-sans">
-                Test arbitrary prompt/response pairs against active policy profile &amp; Gemini Judge
+                Test arbitrary prompt/response pairs against active policy profile &amp; Gemini
+                Judge
               </p>
             </div>
           </div>
@@ -290,7 +300,9 @@ export const InteractionTesterModal: React.FC<InteractionTesterModalProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
             {/* Use Case */}
             <div className="space-y-1.5">
-              <label className="text-[13px] text-[#344054] font-medium block">Target Use Case:</label>
+              <label className="text-[13px] text-[#344054] font-medium block">
+                Target Use Case:
+              </label>
               <select
                 value={useCase}
                 onChange={(e) => setUseCase(e.target.value as UseCaseId)}
@@ -305,7 +317,9 @@ export const InteractionTesterModal: React.FC<InteractionTesterModalProps> = ({
             {/* Tokens & Latency */}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <label className="text-[13px] text-[#344054] font-medium block">Total Tokens:</label>
+                <label className="text-[13px] text-[#344054] font-medium block">
+                  Total Tokens:
+                </label>
                 <input
                   type="number"
                   value={totalTokens}
@@ -314,7 +328,9 @@ export const InteractionTesterModal: React.FC<InteractionTesterModalProps> = ({
                 />
               </div>
               <div className="space-y-1.5">
-                <label className="text-[13px] text-[#344054] font-medium block">Latency (ms):</label>
+                <label className="text-[13px] text-[#344054] font-medium block">
+                  Latency (ms):
+                </label>
                 <input
                   type="number"
                   value={latencyMs}
@@ -401,7 +417,8 @@ export const InteractionTesterModal: React.FC<InteractionTesterModalProps> = ({
                       <WavyDots color="bg-[#7A5AF8]" size="sm" />
                     </div>
                     <p className="text-[11px] text-[#667085] font-sans">
-                      Synthesizing factual groundedness &amp; measuring certainty vs. context support in real-time...
+                      Synthesizing factual groundedness &amp; measuring certainty vs. context
+                      support in real-time...
                     </p>
                   </div>
                 </div>
@@ -418,7 +435,9 @@ export const InteractionTesterModal: React.FC<InteractionTesterModalProps> = ({
                     <span>1. Groundedness Scan</span>
                     <WavyDots color="bg-[#2E90FA]" size="xs" />
                   </div>
-                  <p className="text-[#667085] text-[10px] font-sans">Verifying assertions against context</p>
+                  <p className="text-[#667085] text-[10px] font-sans">
+                    Verifying assertions against context
+                  </p>
                 </div>
 
                 <div className="glass-inset p-3 rounded-xl space-y-1">
@@ -426,7 +445,9 @@ export const InteractionTesterModal: React.FC<InteractionTesterModalProps> = ({
                     <span>2. Certainty Mismatch</span>
                     <WavyDots color="bg-[#DC6803]" size="xs" />
                   </div>
-                  <p className="text-[#667085] text-[10px] font-sans">Analyzing overconfidence patterns</p>
+                  <p className="text-[#667085] text-[10px] font-sans">
+                    Analyzing overconfidence patterns
+                  </p>
                 </div>
 
                 <div className="glass-inset p-3 rounded-xl space-y-1">
@@ -434,7 +455,9 @@ export const InteractionTesterModal: React.FC<InteractionTesterModalProps> = ({
                     <span>3. Policy Arbitration</span>
                     <WavyDots color="bg-[#7A5AF8]" size="xs" />
                   </div>
-                  <p className="text-[#667085] text-[10px] font-sans">Formulating governance verdict</p>
+                  <p className="text-[#667085] text-[10px] font-sans">
+                    Formulating governance verdict
+                  </p>
                 </div>
               </div>
             </div>
@@ -463,7 +486,8 @@ export const InteractionTesterModal: React.FC<InteractionTesterModalProps> = ({
                 <div className="bg-[#FFFAEB]/85 border border-[#FEDF89] rounded-xl p-3.5 flex items-center space-x-2.5 text-xs text-[#B54708] shadow-xs">
                   <Layers className="h-4 w-4 shrink-0 text-[#DC6803]" />
                   <span>
-                    <strong>Multi-Lane Overlap:</strong> {evaluationResult.overlapping_lanes.join(' + ')}
+                    <strong>Multi-Lane Overlap:</strong>{' '}
+                    {evaluationResult.overlapping_lanes.join(' + ')}
                   </span>
                 </div>
               )}
@@ -473,28 +497,46 @@ export const InteractionTesterModal: React.FC<InteractionTesterModalProps> = ({
                 {/* Perf */}
                 <div className="glass-inset rounded-xl p-3.5 space-y-1">
                   <div className="flex justify-between font-semibold text-[#175CD3]">
-                    <span className="flex items-center"><Zap className="h-3.5 w-3.5 mr-1" /> Performance</span>
-                    <span className="font-mono tnum">{(evaluationResult.performance.groundedness_score * 100).toFixed(0)}%</span>
+                    <span className="flex items-center">
+                      <Zap className="h-3.5 w-3.5 mr-1" /> Performance
+                    </span>
+                    <span className="font-mono tnum">
+                      {(evaluationResult.performance.groundedness_score * 100).toFixed(0)}%
+                    </span>
                   </div>
-                  <p className="text-[#667085] text-[11px] font-sans">{evaluationResult.performance.explanation}</p>
+                  <p className="text-[#667085] text-[11px] font-sans">
+                    {evaluationResult.performance.explanation}
+                  </p>
                 </div>
 
                 {/* Cost */}
                 <div className="glass-inset rounded-xl p-3.5 space-y-1">
                   <div className="flex justify-between font-semibold text-[#B54708]">
-                    <span className="flex items-center"><Coins className="h-3.5 w-3.5 mr-1" /> Cost</span>
-                    <span className="font-mono tnum">Z: {evaluationResult.cost.combined_z_score}</span>
+                    <span className="flex items-center">
+                      <Coins className="h-3.5 w-3.5 mr-1" /> Cost
+                    </span>
+                    <span className="font-mono tnum">
+                      Z: {evaluationResult.cost.combined_z_score}
+                    </span>
                   </div>
-                  <p className="text-[#667085] text-[11px] font-sans">{evaluationResult.cost.explanation}</p>
+                  <p className="text-[#667085] text-[11px] font-sans">
+                    {evaluationResult.cost.explanation}
+                  </p>
                 </div>
 
                 {/* Resp */}
                 <div className="glass-inset rounded-xl p-3.5 space-y-1">
                   <div className="flex justify-between font-semibold text-[#6941C6]">
-                    <span className="flex items-center"><Shield className="h-3.5 w-3.5 mr-1" /> Responsibility</span>
-                    <span className="font-mono tnum">{evaluationResult.responsibility.pii_detected.length} PII</span>
+                    <span className="flex items-center">
+                      <Shield className="h-3.5 w-3.5 mr-1" /> Responsibility
+                    </span>
+                    <span className="font-mono tnum">
+                      {evaluationResult.responsibility.pii_detected.length} PII
+                    </span>
                   </div>
-                  <p className="text-[#667085] text-[11px] font-sans">{evaluationResult.responsibility.explanation}</p>
+                  <p className="text-[#667085] text-[11px] font-sans">
+                    {evaluationResult.responsibility.explanation}
+                  </p>
                 </div>
               </div>
 
@@ -537,9 +579,7 @@ export const InteractionTesterModal: React.FC<InteractionTesterModalProps> = ({
           )}
 
           {/* Gemini Live Judge Output */}
-          {judgeResult && (
-            <GeminiJudgeResultCard judgeData={judgeResult} />
-          )}
+          {judgeResult && <GeminiJudgeResultCard judgeData={judgeResult} />}
         </div>
       </div>
     </div>

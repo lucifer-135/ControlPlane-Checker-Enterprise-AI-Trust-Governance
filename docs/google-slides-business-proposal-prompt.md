@@ -2,8 +2,8 @@
 
 Copy everything inside the block below.
 
-````text
-You are a senior enterprise strategy consultant and presentation designer building a 
+```text
+You are a senior enterprise strategy consultant and presentation designer building a
 BUSINESS PROPOSAL deck in Google Slides for a product called ControlPlane Checker.
 
 The deck must be visually indistinguishable from the source presentation
@@ -444,7 +444,7 @@ Produce all 23 slides. After the deck, output a short QA checklist confirming: (
 layout from the source file; (2) no colour outside the palette appears; (3) all numbers are verified and
 exact with zero ungrounded placeholders; (4) every slide features an explicit diagram, flow chart, matrix,
 or infographic on its right visual rail; (5) no text overflows; (6) slide numbers present on slides 2–22 only.
-````
+```
 
 ---
 
@@ -452,7 +452,7 @@ or infographic on its right visual rail; (5) no text overflows; (6) slide number
 
 If the tool truncates long prompts, paste this instead — then paste PART 1 and PART 3 as follow-up messages.
 
-````text
+```text
 Build a 23-slide BUSINESS PROPOSAL in this open presentation for "ControlPlane Checker — a live
 trust layer for enterprise AI". Reuse the existing Accenture masters and layouts only —
 "Cover: gradient" for slide 1, "1_Standard slide_no bullets" for narrative slides,
@@ -494,7 +494,7 @@ Verified figures: 96.2% F1 score (92.9% precision, 100% recall on critical viola
 82 ms avg latency overhead. EU AI Act (GPAI Aug 2025, High-Risk Aug 2026, €35M cap), India DPDP (₹250 Cr cap),
 HIPAA ($2.0M cap), FINRA 24-09. Commercial model: Pilot ($25k / 90 days), Scale ($6,500/mo or $0.008/req),
 Enterprise ($15k/mo base + custom license). All metrics are verified against real ground-truth benchmarks.
-````
+```
 
 ---
 
@@ -502,25 +502,25 @@ Enterprise ($15k/mo base + custom license). All metrics are verified against rea
 
 Keep this open while you review the generated deck.
 
-| Element | Value |
-| :-- | :-- |
-| Canvas | 13.333 in × 7.5 in (16:9) |
-| Slides in source | 5 — Cover, Team details, Problem Statement, Proposed Solution, Thank you |
-| Layouts used | `Cover: gradient`, `Bullets Opt 1`, `1_Standard slide_no bullets`, `Salutation: gradient` |
-| Layouts available | 102 across 5 masters (Accenture 2025 brand kit) |
-| Theme fonts | major `Graphik-Semibold`, minor `Graphik Regular` — body copy authored in Arial |
-| Primary purple | `#A100FF` |
-| Deep aubergine | `#2D1B4E` |
-| Mid violet | `#9B5DE5` |
-| Card / chip tints | `#F5EFFF`, `#E9DCFF` |
-| Body ink / muted | `#1A1A1A` / `#5A5A5A` |
-| Theme accents | `#7500C0`, `#460073`, `#C2A3FF`, `#E6DCFF`, `#FF50A0`, `#224BFF`, `#05F2DB` |
-| Title bar | (0.37, 0.37) · 12.34 × 0.46 in · fill `#A100FF` · Graphik Semibold 20 pt bold white |
-| Eyebrow | (8.70, 0.37) · 3.60 × 0.46 in · Arial 12 pt white right-aligned |
-| Left column | (0.55, 1.10) · 7.20 in wide · Arial 12.5–13.5 pt `#1A1A1A` |
-| Right rail | x 8.00 → 12.80 in · width 4.65–4.80 in |
-| Rail cards | 4.65 × 1.40 in · fill `#F5EFFF` · 0.62 in avatar circle |
-| Flow arrows | isosceles triangle 0.18 × 0.16 in · fill `#A100FF` |
-| Slide number | (12.58, 7.13) · 0.42 × 0.23 in |
-| Cover headline | (3.27, 5.92) · Graphik Semibold 40 pt bold white centred |
-| Cover sub-strip | (4.22, 6.55) · 4.89 × 0.39 in · fill `#A100FF` · Graphik 18 pt white |
+| Element           | Value                                                                                     |
+| :---------------- | :---------------------------------------------------------------------------------------- |
+| Canvas            | 13.333 in × 7.5 in (16:9)                                                                 |
+| Slides in source  | 5 — Cover, Team details, Problem Statement, Proposed Solution, Thank you                  |
+| Layouts used      | `Cover: gradient`, `Bullets Opt 1`, `1_Standard slide_no bullets`, `Salutation: gradient` |
+| Layouts available | 102 across 5 masters (Accenture 2025 brand kit)                                           |
+| Theme fonts       | major `Graphik-Semibold`, minor `Graphik Regular` — body copy authored in Arial           |
+| Primary purple    | `#A100FF`                                                                                 |
+| Deep aubergine    | `#2D1B4E`                                                                                 |
+| Mid violet        | `#9B5DE5`                                                                                 |
+| Card / chip tints | `#F5EFFF`, `#E9DCFF`                                                                      |
+| Body ink / muted  | `#1A1A1A` / `#5A5A5A`                                                                     |
+| Theme accents     | `#7500C0`, `#460073`, `#C2A3FF`, `#E6DCFF`, `#FF50A0`, `#224BFF`, `#05F2DB`               |
+| Title bar         | (0.37, 0.37) · 12.34 × 0.46 in · fill `#A100FF` · Graphik Semibold 20 pt bold white       |
+| Eyebrow           | (8.70, 0.37) · 3.60 × 0.46 in · Arial 12 pt white right-aligned                           |
+| Left column       | (0.55, 1.10) · 7.20 in wide · Arial 12.5–13.5 pt `#1A1A1A`                                |
+| Right rail        | x 8.00 → 12.80 in · width 4.65–4.80 in                                                    |
+| Rail cards        | 4.65 × 1.40 in · fill `#F5EFFF` · 0.62 in avatar circle                                   |
+| Flow arrows       | isosceles triangle 0.18 × 0.16 in · fill `#A100FF`                                        |
+| Slide number      | (12.58, 7.13) · 0.42 × 0.23 in                                                            |
+| Cover headline    | (3.27, 5.92) · Graphik Semibold 40 pt bold white centred                                  |
+| Cover sub-strip   | (4.22, 6.55) · 4.89 × 0.39 in · fill `#A100FF` · Graphik 18 pt white                      |

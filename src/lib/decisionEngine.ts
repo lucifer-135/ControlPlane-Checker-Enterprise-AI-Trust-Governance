@@ -20,7 +20,7 @@ export type SessionAccumulatorMap = Record<string, number>;
 export function evaluateInteraction(
   interaction: SyntheticInteraction,
   policy: PolicyProfile,
-  sessionAccumulator: number = 0
+  sessionAccumulator: number = 0,
 ): EvaluationResult {
   // 1. Run the three lanes concurrently
   const performance = evaluatePerformanceLane(
@@ -28,7 +28,7 @@ export function evaluateInteraction(
     interaction.retrieved_context,
     interaction.response,
     interaction.use_case,
-    policy.thresholds.hallucination_cutoff
+    policy.thresholds.hallucination_cutoff,
   );
 
   const cost = evaluateCostLane(
@@ -37,25 +37,29 @@ export function evaluateInteraction(
     interaction.use_case,
     interaction.query_type,
     interaction.tool_calls_count || 0,
-    policy.thresholds.cost_z_score_cutoff
+    policy.thresholds.cost_z_score_cutoff,
   );
 
   const responsibility = evaluateResponsibilityLane(
     interaction.response,
     policy.geography_ruleset,
     policy.thresholds.pii_severity_cutoff,
-    policy.thresholds.toxicity_cutoff
+    policy.thresholds.toxicity_cutoff,
   );
 
   // 2. Compute Multi-lane overlaps
   const overlappingLanes: string[] = [];
   if (performance.risk_score >= 0.45) {
     overlappingLanes.push(
-      performance.is_confidently_wrong ? 'Performance (Confidently Wrong)' : 'Performance (Ungrounded)'
+      performance.is_confidently_wrong
+        ? 'Performance (Confidently Wrong)'
+        : 'Performance (Ungrounded)',
     );
   }
   if (cost.is_outlier) {
-    overlappingLanes.push(cost.is_runaway_loop ? 'Cost (Runaway Loop)' : 'Cost (Token/Latency Outlier)');
+    overlappingLanes.push(
+      cost.is_runaway_loop ? 'Cost (Runaway Loop)' : 'Cost (Token/Latency Outlier)',
+    );
   }
   if (responsibility.risk_score >= 0.4) {
     if (responsibility.pii_detected.length > 0 && responsibility.bias_flags.length > 0) {
@@ -78,12 +82,12 @@ export function evaluateInteraction(
 
   const wPerf = policy.active_lanes.performance ? policy.lane_weights.performance / totalWeight : 0;
   const wCost = policy.active_lanes.cost ? policy.lane_weights.cost / totalWeight : 0;
-  const wResp = policy.active_lanes.responsibility ? policy.lane_weights.responsibility / totalWeight : 0;
+  const wResp = policy.active_lanes.responsibility
+    ? policy.lane_weights.responsibility / totalWeight
+    : 0;
 
   const rawComposite =
-    performance.risk_score * wPerf +
-    cost.risk_score * wCost +
-    responsibility.risk_score * wResp;
+    performance.risk_score * wPerf + cost.risk_score * wCost + responsibility.risk_score * wResp;
 
   const compositeRiskScore = Number(Math.min(1.0, Math.max(0.0, rawComposite)).toFixed(3));
 
@@ -91,7 +95,7 @@ export function evaluateInteraction(
   // New turn risk compounds previous session turns
   const sessionDecayFactor = 0.45;
   const newSessionRisk = Number(
-    Math.min(1.0, compositeRiskScore * 0.7 + sessionAccumulator * sessionDecayFactor).toFixed(3)
+    Math.min(1.0, compositeRiskScore * 0.7 + sessionAccumulator * sessionDecayFactor).toFixed(3),
   );
 
   // Effective risk considers both turn and session compounding
@@ -109,7 +113,9 @@ export function evaluateInteraction(
 
   // Hard governance overrides for non-negotiable compliance risks
   if (
-    responsibility.bias_flags.some((b) => b.includes('Redlining') || b.includes('Gender') || b.includes('Xenophobia')) ||
+    responsibility.bias_flags.some(
+      (b) => b.includes('Redlining') || b.includes('Gender') || b.includes('Xenophobia'),
+    ) ||
     responsibility.pii_detected.some((p) => p.type === 'SSN' || p.type === 'CREDIT_CARD') ||
     cost.is_runaway_loop
   ) {
@@ -141,7 +147,7 @@ export function evaluateInteraction(
 
 export function evaluateDataset(
   interactions: SyntheticInteraction[],
-  policyProfiles: Record<UseCaseId, PolicyProfile>
+  policyProfiles: Record<UseCaseId, PolicyProfile>,
 ): {
   evaluations: Record<string, EvaluationResult>;
   sessionAccumulators: SessionAccumulatorMap;

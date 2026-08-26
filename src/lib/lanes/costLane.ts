@@ -12,7 +12,7 @@ export function evaluateCostLane(
   useCase: UseCaseId,
   queryType: string,
   toolCallsCount: number = 0,
-  zScoreCutoff: number = 2.0
+  zScoreCutoff: number = 2.0,
 ): CostLaneResult {
   const baseline = getBaseline(useCase, queryType);
 
@@ -32,7 +32,7 @@ export function evaluateCostLane(
   if (isRunawayLoop) {
     riskScore = 0.95;
   } else if (combinedZ > 0) {
-    riskScore = Math.min(1.0, (combinedZ / 4.0));
+    riskScore = Math.min(1.0, combinedZ / 4.0);
   }
 
   let explanation = `Normal resource consumption (Z-Score: ${combinedZ.toFixed(2)}, Latency: ${latencyMs}ms vs mean ${baseline.mean_latency_ms}ms).`;

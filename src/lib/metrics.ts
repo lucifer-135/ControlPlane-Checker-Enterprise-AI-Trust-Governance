@@ -3,7 +3,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { ConfusionMatrix, EvaluationResult, PolicyProfile, SyntheticInteraction, UseCaseId } from '../types';
+import {
+  ConfusionMatrix,
+  EvaluationResult,
+  PolicyProfile,
+  SyntheticInteraction,
+  UseCaseId,
+} from '../types';
 import { evaluateInteraction } from './decisionEngine';
 
 export function isGroundTruthViolating(item: SyntheticInteraction): boolean {
@@ -21,7 +27,7 @@ export interface ConfusionMatrixBreakdown {
 export function getConfusionMatrixItems(
   interactions: SyntheticInteraction[],
   evaluations: Record<string, EvaluationResult>,
-  targetUseCase?: UseCaseId
+  targetUseCase?: UseCaseId,
 ): ConfusionMatrixBreakdown {
   const tp: SyntheticInteraction[] = [];
   const fp: SyntheticInteraction[] = [];
@@ -56,7 +62,7 @@ export function getConfusionMatrixItems(
 export function computeConfusionMatrix(
   interactions: SyntheticInteraction[],
   evaluations: Record<string, EvaluationResult>,
-  targetUseCase?: UseCaseId
+  targetUseCase?: UseCaseId,
 ): ConfusionMatrix {
   const items = getConfusionMatrixItems(interactions, evaluations, targetUseCase);
   const tp = items.TP.length;
@@ -83,7 +89,10 @@ export function computeConfusionMatrix(
     accuracy: Number((accuracy * 100).toFixed(1)),
     fp_rate: Number((fpRate * 100).toFixed(1)),
     fn_rate: Number((fnRate * 100).toFixed(1)),
-    total_evaluated: (targetUseCase ? interactions.filter((i) => i.use_case === targetUseCase) : interactions).length,
+    total_evaluated: (targetUseCase
+      ? interactions.filter((i) => i.use_case === targetUseCase)
+      : interactions
+    ).length,
   };
 }
 
@@ -100,12 +109,12 @@ export interface TradeoffPoint {
 export function generateTradeoffCurve(
   interactions: SyntheticInteraction[],
   baseProfiles: Record<UseCaseId, PolicyProfile>,
-  selectedUseCase?: UseCaseId
+  selectedUseCase?: UseCaseId,
 ): TradeoffPoint[] {
   const points: TradeoffPoint[] = [];
 
   // Sweep threshold from 0.10 to 0.90 in steps of 0.05
-  for (let t = 0.10; t <= 0.90; t += 0.05) {
+  for (let t = 0.1; t <= 0.9; t += 0.05) {
     const thresholdVal = Number(t.toFixed(2));
 
     // Create cloned profiles with modified block_escalate threshold

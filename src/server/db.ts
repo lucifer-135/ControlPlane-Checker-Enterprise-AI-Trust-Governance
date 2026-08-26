@@ -25,7 +25,8 @@ export function getDb(customUrl?: string): Client {
     if (!fs.existsSync(dbDir)) {
       fs.mkdirSync(dbDir, { recursive: true });
     }
-    const dbPath = customUrl || process.env.DATABASE_URL || `file:${path.join(dbDir, 'controlplane.db')}`;
+    const dbPath =
+      customUrl || process.env.DATABASE_URL || `file:${path.join(dbDir, 'controlplane.db')}`;
     dbClient = createClient({ url: dbPath });
   }
   return dbClient;
@@ -115,7 +116,9 @@ export async function initDb(client: Client = getDb()): Promise<void> {
   `);
 }
 
-export async function seedIfEmpty(client: Client = getDb()): Promise<{ seeded: boolean; count: number }> {
+export async function seedIfEmpty(
+  client: Client = getDb(),
+): Promise<{ seeded: boolean; count: number }> {
   await initDb(client);
 
   const check = await client.execute('SELECT COUNT(*) as count FROM interactions');
@@ -204,7 +207,10 @@ export async function seedIfEmpty(client: Client = getDb()): Promise<{ seeded: b
 export async function getAllInteractions(
   client: Client = getDb(),
   filterUseCase?: string,
-): Promise<{ interactions: SyntheticInteraction[]; evaluations: Record<string, EvaluationResult> }> {
+): Promise<{
+  interactions: SyntheticInteraction[];
+  evaluations: Record<string, EvaluationResult>;
+}> {
   let query = `
     SELECT i.*, e.composite_risk_score, e.session_accumulated_risk, e.verdict,
            e.has_multi_lane_overlap, e.overlapping_lanes, e.added_overhead_latency_ms,
@@ -346,9 +352,7 @@ export async function insertInteractionWithEvaluation(
 }
 
 export async function getReviewDecisions(client: Client = getDb()): Promise<ReviewDecision[]> {
-  const res = await client.execute(
-    'SELECT * FROM review_decisions ORDER BY reviewed_at DESC',
-  );
+  const res = await client.execute('SELECT * FROM review_decisions ORDER BY reviewed_at DESC');
 
   return res.rows.map((row) => ({
     id: String(row.id),

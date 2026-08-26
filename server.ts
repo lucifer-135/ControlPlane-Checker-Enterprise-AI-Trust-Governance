@@ -283,9 +283,13 @@ async function startServer() {
     await initDb();
     const seedResult = await seedIfEmpty();
     if (seedResult.seeded) {
-      console.warn(`[ControlPlane Database] Seeded ${seedResult.count} interactions into SQLite ledger.`);
+      console.warn(
+        `[ControlPlane Database] Seeded ${seedResult.count} interactions into SQLite ledger.`,
+      );
     } else {
-      console.warn(`[ControlPlane Database] Connected. Found ${seedResult.count} existing interactions.`);
+      console.warn(
+        `[ControlPlane Database] Connected. Found ${seedResult.count} existing interactions.`,
+      );
     }
   } catch (dbErr: any) {
     console.error('[ControlPlane Database] Initialization warning:', dbErr.message);

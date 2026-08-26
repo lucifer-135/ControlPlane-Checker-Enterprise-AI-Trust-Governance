@@ -32,16 +32,18 @@ import { AmbientShaderBackground } from './components/AmbientShaderBackground';
 
 export function App() {
   // Navigation & View State - Defaults to 'dashboard' overview at start
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'feed' | 'review' | 'policy' | 'metrics'>('dashboard');
+  const [activeTab, setActiveTab] = useState<
+    'dashboard' | 'feed' | 'review' | 'policy' | 'metrics'
+  >('dashboard');
   const [activeUseCase, setActiveUseCase] = useState<UseCaseId | 'ALL'>('ALL');
   const [policyUseCase, setPolicyUseCase] = useState<UseCaseId>('support_bot');
   const [isTesterOpen, setIsTesterOpen] = useState<boolean>(false);
 
   // Dynamic Interactions & Policy Profiles State (synced with DB)
-  const [interactionsList, setInteractionsList] = useState<SyntheticInteraction[]>(SYNTHETIC_INTERACTIONS);
-  const [policyProfiles, setPolicyProfiles] = useState<Record<UseCaseId, PolicyProfile>>(
-    DEFAULT_POLICY_PROFILES
-  );
+  const [interactionsList, setInteractionsList] =
+    useState<SyntheticInteraction[]>(SYNTHETIC_INTERACTIONS);
+  const [policyProfiles, setPolicyProfiles] =
+    useState<Record<UseCaseId, PolicyProfile>>(DEFAULT_POLICY_PROFILES);
 
   // Frontline Human Review Decisions Store
   const [reviewDecisions, setReviewDecisions] = useState<ReviewDecision[]>([]);
@@ -92,7 +94,7 @@ export function App() {
   const handleNavigateTab = (
     tab: 'dashboard' | 'feed' | 'review' | 'policy' | 'metrics',
     targetId?: string,
-    startLiveStream?: boolean
+    startLiveStream?: boolean,
   ) => {
     setActiveTab(tab);
     if (tab === 'review' && targetId) {
@@ -186,8 +188,8 @@ export function App() {
         isLiveLLM: false,
         verdict: isConfidentlyWrong ? 'CONFIDENTLY_WRONG' : 'UNGROUNDED',
         groundednessScore: isConfidentlyWrong ? 0.15 : 0.35,
-        certaintyScore: isConfidentlyWrong ? 0.95 : 0.70,
-        certaintySupportMismatch: isConfidentlyWrong ? 0.80 : 0.45,
+        certaintyScore: isConfidentlyWrong ? 0.95 : 0.7,
+        certaintySupportMismatch: isConfidentlyWrong ? 0.8 : 0.45,
         reasoning: isConfidentlyWrong
           ? 'Autonomous Governance Evaluator: AI asserts high certainty and absolute claims that contradict the retrieved policy bounds.'
           : 'Autonomous Governance Evaluator: Response contains ungrounded factual assertions unsupported by the reference context.',
@@ -200,7 +202,7 @@ export function App() {
   const reviewQueueCount = useMemo(() => {
     const reviewedIds = new Set(reviewDecisions.map((d) => d.interaction_id));
     return interactionsList.filter(
-      (i) => evaluations[i.id]?.verdict === 'BLOCK_ESCALATE' && !reviewedIds.has(i.id)
+      (i) => evaluations[i.id]?.verdict === 'BLOCK_ESCALATE' && !reviewedIds.has(i.id),
     ).length;
   }, [interactionsList, evaluations, reviewDecisions]);
 
@@ -328,13 +330,13 @@ export function App() {
             </button>
             <div className="flex items-center gap-2 border-l border-slate-200 pl-6">
               <span className="w-1.5 h-1.5 rounded-full bg-[#12B76A]"></span>
-              <span className="font-mono text-[11px] text-[#475467] tnum font-semibold">Operational</span>
+              <span className="font-mono text-[11px] text-[#475467] tnum font-semibold">
+                Operational
+              </span>
             </div>
           </div>
         </div>
       </footer>
-
-
     </div>
   );
 }

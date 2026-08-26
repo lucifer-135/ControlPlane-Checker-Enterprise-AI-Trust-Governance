@@ -8,18 +8,10 @@ export type UseCaseId = 'support_bot' | 'internal_copilot' | 'decision_support';
 export type VerdictTier = 'ALLOW' | 'BADGE' | 'SOFT_CORRECT' | 'BLOCK_ESCALATE';
 
 export type GroundTruthLabel =
-  | 'clean'
-  | 'hallucinated'
-  | 'pii_leaking'
-  | 'biased_toxic'
-  | 'cost_outlier'
-  | 'custom_test';
+  'clean' | 'hallucinated' | 'pii_leaking' | 'biased_toxic' | 'cost_outlier' | 'custom_test';
 
 export type GeographyRuleset =
-  | 'EU_AI_ACT_STANDARD'
-  | 'US_HIPAA_FINRA'
-  | 'INDIA_DPDP_ACT'
-  | 'INTERNAL_IP_SECURITY';
+  'EU_AI_ACT_STANDARD' | 'US_HIPAA_FINRA' | 'INDIA_DPDP_ACT' | 'INTERNAL_IP_SECURITY';
 
 export interface TokenUsage {
   prompt: number;
@@ -147,12 +139,12 @@ export interface PolicyProfile {
   };
   thresholds: {
     block_escalate: number; // Default e.g. 0.70
-    soft_correct: number;   // Default e.g. 0.45
-    badge: number;          // Default e.g. 0.25
+    soft_correct: number; // Default e.g. 0.45
+    badge: number; // Default e.g. 0.25
     cost_z_score_cutoff: number; // e.g. 2.0
     pii_severity_cutoff: number; // e.g. 0.3
     hallucination_cutoff: number; // e.g. 0.4
-    toxicity_cutoff: number;      // e.g. 0.4
+    toxicity_cutoff: number; // e.g. 0.4
   };
   timeout_fallback: 'UNKNOWN_FLAG' | 'PASS' | 'BLOCK';
   version: string;

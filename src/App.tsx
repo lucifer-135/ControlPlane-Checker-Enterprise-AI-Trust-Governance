@@ -18,6 +18,8 @@ import {
   fetchInteractionsApi,
   fetchReviewsApi,
   submitReviewDecisionApi,
+  clearReviewsApi,
+  deleteReviewApi,
   fetchPoliciesApi,
   savePolicyProfileApi,
 } from './lib/api';
@@ -154,6 +156,16 @@ export function App() {
     submitReviewDecisionApi(decision);
   };
 
+  const handleClearReviews = async () => {
+    setReviewDecisions([]);
+    await clearReviewsApi();
+  };
+
+  const handleDeleteReview = async (id: string) => {
+    setReviewDecisions((prev) => prev.filter((d) => d.id !== id && d.interaction_id !== id));
+    await deleteReviewApi(id);
+  };
+
   // Call Gemini 3.6 Flash LLM Judge via server endpoint
   const handleRunJudge = async (interaction: SyntheticInteraction) => {
     try {
@@ -258,6 +270,8 @@ export function App() {
               evaluations={evaluations}
               reviewDecisions={reviewDecisions}
               onReviewDecision={handleReviewDecision}
+              onClearReviews={handleClearReviews}
+              onDeleteReview={handleDeleteReview}
               selectedReviewId={selectedReviewId}
               onClearSelectedReviewId={() => setSelectedReviewId(null)}
             />

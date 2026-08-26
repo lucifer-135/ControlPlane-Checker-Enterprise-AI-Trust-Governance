@@ -3,21 +3,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
-import {
-  EvaluationResult,
-  ReviewDecision,
-  SpanHighlight,
-  SyntheticInteraction,
-  VerdictTier,
-} from '../types';
+import React, { useState, useEffect, useMemo } from 'react';
+import { EvaluationResult, ReviewDecision, SpanHighlight, SyntheticInteraction } from '../types';
 import { VerdictBadge } from './VerdictBadge';
 import {
   ShieldAlert,
   ShieldCheck,
   Edit3,
   CheckCircle2,
-  AlertTriangle,
   History,
   TrendingUp,
   Layers,
@@ -25,6 +18,9 @@ import {
   ClipboardList,
   ChevronDown,
   ChevronUp,
+  RotateCcw,
+  Trash2,
+  Check,
 } from 'lucide-react';
 
 interface ReviewQueueTabProps {
@@ -32,6 +28,8 @@ interface ReviewQueueTabProps {
   evaluations: Record<string, EvaluationResult>;
   reviewDecisions: ReviewDecision[];
   onReviewDecision: (decision: ReviewDecision) => void;
+  onClearReviews?: () => void;
+  onDeleteReview?: (id: string) => void;
   selectedReviewId?: string | null;
   onClearSelectedReviewId?: () => void;
 }
@@ -41,15 +39,23 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
   evaluations,
   reviewDecisions,
   onReviewDecision,
+  onClearReviews,
+  onDeleteReview,
   selectedReviewId,
-  onClearSelectedReviewId,
 }) => {
   const [includeSoftCorrect, setIncludeSoftCorrect] = useState<boolean>(false);
+  const [viewFilter, setViewFilter] = useState<'pending' | 'all' | 'triaged'>('pending');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editedText, setEditedText] = useState<string>('');
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3500);
+  };
 
   // Auto-expand and scroll to selected ID when navigated from other tabs
   useEffect(() => {
@@ -81,24 +87,46 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
   }, [selectedReviewId, evaluations]);
 
   // Items requiring review
-  const escalatedInteractions = interactions.filter((item) => {
-    const evalRes = evaluations[item.id];
-    if (!evalRes) return false;
-    if (includeSoftCorrect) {
-      return evalRes.verdict === 'BLOCK_ESCALATE' || evalRes.verdict === 'SOFT_CORRECT';
-    }
-    return evalRes.verdict === 'BLOCK_ESCALATE';
-  });
+  const escalatedInteractions = useMemo(() => {
+    return interactions.filter((item) => {
+      const evalRes = evaluations[item.id];
+      if (!evalRes) return false;
+      if (includeSoftCorrect) {
+        return evalRes.verdict === 'BLOCK_ESCALATE' || evalRes.verdict === 'SOFT_CORRECT';
+      }
+      return evalRes.verdict === 'BLOCK_ESCALATE';
+    });
+  }, [interactions, evaluations, includeSoftCorrect]);
 
-  const reviewedIds = new Set(reviewDecisions.map((d) => d.interaction_id));
-  const pendingInteractions = escalatedInteractions.filter((i) => !reviewedIds.has(i.id));
+  const reviewedMap = useMemo(() => {
+    const map = new Map<string, ReviewDecision>();
+    for (const d of reviewDecisions) {
+      map.set(d.interaction_id, d);
+    }
+    return map;
+  }, [reviewDecisions]);
+
+  const pendingInteractions = useMemo(() => {
+    return escalatedInteractions.filter((i) => !reviewedMap.has(i.id));
+  }, [escalatedInteractions, reviewedMap]);
+
+  const triagedInteractions = useMemo(() => {
+    return escalatedInteractions.filter((i) => reviewedMap.has(i.id));
+  }, [escalatedInteractions, reviewedMap]);
+
+  // Display list based on viewFilter
+  const displayedInteractions = useMemo(() => {
+    if (viewFilter === 'pending') return pendingInteractions;
+    if (viewFilter === 'triaged') return triagedInteractions;
+    return escalatedInteractions;
+  }, [viewFilter, pendingInteractions, triagedInteractions, escalatedInteractions]);
 
   // Initialize first item as expanded if none is set yet and not navigating with specific ID
   useEffect(() => {
-    if (!expandedId && !selectedReviewId && pendingInteractions.length > 0) {
-      setExpandedId(pendingInteractions[0].id);
+    if (!expandedId && !selectedReviewId && displayedInteractions.length > 0) {
+      setExpandedId(displayedInteractions[0].id);
     }
-  }, [pendingInteractions.length]);
+  }, [displayedInteractions, expandedId, selectedReviewId]);
 
   const handleConfirmBlock = (item: SyntheticInteraction, evalRes: EvaluationResult) => {
     const decision: ReviewDecision = {
@@ -114,6 +142,7 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
       primary_trigger_lane: evalRes.overlapping_lanes[0] || 'Responsibility',
     };
     onReviewDecision(decision);
+    showToast(`Adjudicated ${item.id}: Block Confirmed`);
   };
 
   const handleOverrideAllow = (item: SyntheticInteraction, evalRes: EvaluationResult) => {
@@ -130,6 +159,7 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
       primary_trigger_lane: evalRes.overlapping_lanes[0] || 'Performance',
     };
     onReviewDecision(decision);
+    showToast(`Adjudicated ${item.id}: Overridden to ALLOW`);
   };
 
   const handleStartEdit = (item: SyntheticInteraction, evalRes: EvaluationResult) => {
@@ -153,6 +183,21 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
     };
     onReviewDecision(decision);
     setEditingId(null);
+    showToast(`Adjudicated ${item.id}: Sanitized & Released`);
+  };
+
+  const handleResetSession = () => {
+    if (onClearReviews) {
+      onClearReviews();
+      showToast('Review session reset: all items restored to pending triage queue');
+    }
+  };
+
+  const handleReopenItem = (interactionId: string) => {
+    if (onDeleteReview) {
+      onDeleteReview(interactionId);
+      showToast(`Reopened interaction ${interactionId} back to pending review`);
+    }
   };
 
   // Feedback & Threshold Drift calculations
@@ -250,6 +295,16 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
 
   return (
     <div className="space-y-6">
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 glass-panel bg-white/95 border border-indigo-200 text-[#101828] px-4 py-3 rounded-2xl shadow-xl flex items-center gap-3 animate-in fade-in slide-in-from-bottom-4 duration-200">
+          <div className="p-1 rounded-full bg-emerald-100 text-emerald-600">
+            <Check className="h-4 w-4" />
+          </div>
+          <span className="text-xs font-semibold">{toastMessage}</span>
+        </div>
+      )}
+
       {/* 1. Review Queue Header Stats */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* Left: Pending Count */}
@@ -300,9 +355,21 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
         <div className="glass-panel glass-hover rounded-2xl p-6 flex flex-col justify-between relative overflow-hidden">
           <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/10 rounded-full blur-2xl pointer-events-none -z-10" />
           <div className="flex items-center justify-between">
-            <span className="text-[13px] text-[#475467] font-medium">Review feedback metrics</span>
-            <div className="p-1.5 rounded-xl bg-[#EFF6FF] border border-[#B2DDFF]">
-              <History className="h-4 w-4 text-[#2E90FA]" />
+            <span className="text-[13px] text-[#475467] font-medium">Review session metrics</span>
+            <div className="flex items-center gap-2">
+              {reviewDecisions.length > 0 && onClearReviews && (
+                <button
+                  onClick={handleResetSession}
+                  className="px-2.5 py-1 rounded-lg text-[11px] font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 flex items-center gap-1.5 transition-colors cursor-pointer"
+                  title="Clear review session and restore all items to pending queue"
+                >
+                  <RotateCcw className="h-3 w-3" />
+                  <span>Reset Session</span>
+                </button>
+              )}
+              <div className="p-1.5 rounded-xl bg-[#EFF6FF] border border-[#B2DDFF]">
+                <History className="h-4 w-4 text-[#2E90FA]" />
+              </div>
             </div>
           </div>
           <div className="my-2 grid grid-cols-2 gap-4">
@@ -320,7 +387,7 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
             </div>
           </div>
           <p className="text-xs text-[#667085] pt-3 border-t border-slate-200 leading-relaxed">
-            {totalOverrides} overrides logged in session audit trail
+            {totalOverrides} overrides recorded in active session
           </p>
         </div>
 
@@ -340,37 +407,121 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
                 : 'Current policy profile thresholds align well with frontline triage decisions. All blocked high-risk items represent genuine regulatory/PII violations.'}
             </p>
           </div>
-          <div className="mt-3 pt-3 border-t border-slate-200 text-[11px] text-[#067647] font-semibold">
-            FR-21 Feedback Store: Active
+          <div className="mt-3 pt-3 border-t border-slate-200 text-[11px] text-[#067647] font-semibold flex items-center justify-between">
+            <span>FR-21 Feedback Store: Active</span>
+            <span className="font-mono text-[10px] text-slate-500 font-normal">
+              Append-Only Audit
+            </span>
           </div>
         </div>
       </div>
 
-      {/* 2. Pending Escalated Items List */}
+      {/* 2. Review Queue Navigation & Triage List */}
       <div className="space-y-4">
-        <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-          <h3 className="font-headline text-lg text-[#101828] font-semibold tracking-tight flex items-center">
-            <ClipboardList className="h-5 w-5 text-[#D92D20] mr-2" />
-            Frontline Human Triage Queue ({pendingInteractions.length} items)
-          </h3>
-          <span className="text-xs text-[#98A2B3] hidden sm:inline font-medium">
-            Reviewer Target: &lt; 60s per escalated interaction
-          </span>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-3">
+          <div className="flex items-center gap-3">
+            <h3 className="font-headline text-lg text-[#101828] font-semibold tracking-tight flex items-center">
+              <ClipboardList className="h-5 w-5 text-[#D92D20] mr-2" />
+              Frontline Triage Queue
+            </h3>
+            {/* Filter Tabs */}
+            <div className="inline-flex rounded-xl p-1 bg-slate-200/70 text-xs font-medium">
+              <button
+                onClick={() => setViewFilter('pending')}
+                className={`px-3 py-1 rounded-lg transition-all ${
+                  viewFilter === 'pending'
+                    ? 'bg-white text-[#101828] shadow-xs font-semibold'
+                    : 'text-[#667085] hover:text-[#101828]'
+                }`}
+              >
+                Pending ({pendingInteractions.length})
+              </button>
+              <button
+                onClick={() => setViewFilter('triaged')}
+                className={`px-3 py-1 rounded-lg transition-all ${
+                  viewFilter === 'triaged'
+                    ? 'bg-white text-[#101828] shadow-xs font-semibold'
+                    : 'text-[#667085] hover:text-[#101828]'
+                }`}
+              >
+                Triaged ({triagedInteractions.length})
+              </button>
+              <button
+                onClick={() => setViewFilter('all')}
+                className={`px-3 py-1 rounded-lg transition-all ${
+                  viewFilter === 'all'
+                    ? 'bg-white text-[#101828] shadow-xs font-semibold'
+                    : 'text-[#667085] hover:text-[#101828]'
+                }`}
+              >
+                All Escalated ({escalatedInteractions.length})
+              </button>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2.5">
+            {reviewDecisions.length > 0 && onClearReviews && (
+              <button
+                onClick={handleResetSession}
+                className="px-3 py-1.5 rounded-xl text-xs font-medium text-[#344054] bg-white border border-slate-200 hover:bg-slate-50 hover:text-rose-600 transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
+                title="Restore all items to pending triage queue"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                <span>Reset Queue Session</span>
+              </button>
+            )}
+            <span className="text-xs text-[#98A2B3] hidden sm:inline font-medium">
+              Target: &lt; 60s per item
+            </span>
+          </div>
         </div>
 
-        {pendingInteractions.length === 0 ? (
-          <div className="glass-panel rounded-2xl p-12 text-center">
-            <CheckCircle2 className="h-10 w-10 text-[#12B76A] mx-auto mb-3" />
-            <p className="text-sm font-semibold text-[#101828]">Review Queue is Completely Clean</p>
-            <p className="text-xs text-[#667085] mt-1">
-              All escalated items have been triaged or no blocking violations are currently pending.
-            </p>
+        {displayedInteractions.length === 0 ? (
+          <div className="glass-panel rounded-2xl p-10 text-center space-y-4">
+            <div className="h-14 w-14 rounded-2xl bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto shadow-sm">
+              <CheckCircle2 className="h-8 w-8" />
+            </div>
+            <div className="space-y-1 max-w-md mx-auto">
+              <p className="text-base font-semibold text-[#101828]">
+                {viewFilter === 'triaged'
+                  ? 'No Items Triaged Yet in this Session'
+                  : 'Review Queue is Completely Clean'}
+              </p>
+              <p className="text-xs text-[#667085] leading-relaxed">
+                {viewFilter === 'triaged'
+                  ? 'Adjudicate pending interactions above to build your session audit trail.'
+                  : totalReviewed > 0
+                    ? `All ${totalReviewed} escalated interactions have been triaged in this session. You can reset the session anytime to re-evaluate items.`
+                    : 'All escalated items have been triaged or no blocking violations are currently pending.'}
+              </p>
+            </div>
+
+            {totalReviewed > 0 && onClearReviews && (
+              <div className="pt-2 flex items-center justify-center gap-3">
+                <button
+                  onClick={handleResetSession}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-[#4F46E5] hover:bg-[#4338CA] transition-all flex items-center gap-2 shadow-sm cursor-pointer"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  <span>Reset Review Session (Restore Queue)</span>
+                </button>
+                <button
+                  onClick={() => setViewFilter('triaged')}
+                  className="px-4 py-2 rounded-xl text-xs font-medium text-[#344054] bg-white border border-slate-200 hover:bg-slate-50 transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
+                >
+                  <History className="h-3.5 w-3.5 text-blue-600" />
+                  <span>View Adjudications ({totalReviewed})</span>
+                </button>
+              </div>
+            )}
           </div>
         ) : (
-          pendingInteractions.map((item) => {
+          displayedInteractions.map((item) => {
             const evalRes = evaluations[item.id];
             if (!evalRes) return null;
 
+            const existingDecision = reviewedMap.get(item.id);
+            const isTriaged = Boolean(existingDecision);
             const isExpanded = expandedId === item.id;
             const isHighlighted = highlightedId === item.id;
             const isEditing = editingId === item.id;
@@ -380,7 +531,11 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
                 key={item.id}
                 id={`queue-item-${item.id}`}
                 className={`glass-panel rounded-2xl overflow-hidden transition-all duration-300 border-l-4 ${
-                  evalRes.verdict === 'BLOCK_ESCALATE' ? 'border-l-[#F04438]' : 'border-l-[#DC6803]'
+                  isTriaged
+                    ? 'border-l-emerald-500 opacity-90'
+                    : evalRes.verdict === 'BLOCK_ESCALATE'
+                      ? 'border-l-[#F04438]'
+                      : 'border-l-[#DC6803]'
                 } ${
                   isHighlighted
                     ? 'border-[#4F46E5] ring-4 ring-[#EEF0FE] shadow-lg'
@@ -413,6 +568,12 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
                       <span className="font-mono text-[#98A2B3] text-xs tnum">
                         {item.session_id}
                       </span>
+                      {isTriaged && (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-lg text-[10px] font-semibold bg-emerald-50 border border-emerald-200 text-emerald-700 shadow-xs">
+                          <Check className="h-3 w-3 mr-1 text-emerald-600" />
+                          Triaged: {existingDecision?.action}
+                        </span>
+                      )}
                       {evalRes.has_multi_lane_overlap && (
                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-lg text-[10px] font-medium bg-[#FFFAEB]/85 border border-[#FEDF89] text-[#B54708] shadow-xs">
                           <Layers className="h-3 w-3 mr-1 text-[#DC6803]" />
@@ -450,177 +611,171 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
                   </div>
                 </div>
 
-                {/* Expanded Inspection & Review Section */}
+                {/* Expanded Inspection & Adjudication View */}
                 {isExpanded && (
-                  <div className="p-6 pt-4 bg-slate-50/50 border-t border-slate-200 space-y-5 backdrop-blur-md">
-                    {/* Violation Reasons Breakdown */}
-                    <div className="bg-[#FEF3F2]/85 border border-[#FECDCA] rounded-xl p-4 text-xs space-y-2 shadow-xs">
-                      <div className="text-[11px] font-semibold text-[#B42318] flex items-center">
-                        <AlertTriangle className="h-3.5 w-3.5 mr-2 text-[#F04438]" />
-                        Specific triggering findings across governance lanes
+                  <div className="px-5 pb-5 pt-2 border-t border-slate-200/80 space-y-5 bg-white/40">
+                    {/* Prompt & Retrieved Context */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                      <div className="glass-inset p-4 rounded-xl space-y-1.5">
+                        <span className="font-semibold text-[#101828] block">User Prompt</span>
+                        <p className="text-[#344054] leading-relaxed font-sans">{item.prompt}</p>
                       </div>
-                      <ul className="list-disc list-inside text-[#344054] space-y-1 text-xs font-sans">
-                        {evalRes.performance.is_confidently_wrong && (
-                          <li>
-                            <span className="font-semibold text-[#175CD3]">Performance:</span>{' '}
-                            Confidently wrong claim detected with{' '}
-                            {(evalRes.performance.certainty_score * 100).toFixed(0)}% asserted
-                            confidence vs{' '}
-                            {(evalRes.performance.groundedness_score * 100).toFixed(0)}% context
-                            support.
-                          </li>
-                        )}
-                        {evalRes.responsibility.pii_detected.length > 0 && (
-                          <li>
-                            <span className="font-semibold text-[#6941C6]">
-                              Responsibility (PII):
-                            </span>{' '}
-                            Disclosed {evalRes.responsibility.pii_detected.length} unredacted
-                            sensitive entity instance(s):{' '}
-                            {evalRes.responsibility.pii_detected.map((p) => p.type).join(', ')}.
-                          </li>
-                        )}
-                        {evalRes.responsibility.bias_flags.length > 0 && (
-                          <li>
-                            <span className="font-semibold text-[#6941C6]">
-                              Responsibility (Bias):
-                            </span>{' '}
-                            {evalRes.responsibility.bias_flags.join(', ')}.
-                          </li>
-                        )}
-                        {evalRes.cost.is_outlier && (
-                          <li>
-                            <span className="font-semibold text-[#B54708]">Cost:</span> High
-                            resource anomaly (Z-Score: {evalRes.cost.combined_z_score}).
-                          </li>
-                        )}
-                      </ul>
+                      <div className="glass-inset p-4 rounded-xl space-y-1.5">
+                        <span className="font-semibold text-[#101828] block">
+                          Retrieved Context Grounding
+                        </span>
+                        <p className="text-[#344054] leading-relaxed font-sans font-mono text-[11px] overflow-y-auto max-h-32">
+                          {item.retrieved_context || (
+                            <span className="text-[#98A2B3] italic">
+                              No context retrieved (zero-shot)
+                            </span>
+                          )}
+                        </p>
+                      </div>
                     </div>
 
-                    {/* Dual Inspection: Prompt + Context vs Response */}
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 text-xs">
-                      {/* Left: Prompt & Context */}
-                      <div className="space-y-3">
-                        <div className="glass-inset rounded-xl p-4">
-                          <span className="text-[11px] text-[#667085] block mb-1.5 font-medium">
-                            User prompt
+                    {/* Model Response with Violation Highlighting */}
+                    <div className="glass-inset p-4 rounded-xl space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-[#101828] text-xs">
+                          Candidate Output (with Lane Violation Highlights)
+                        </span>
+                        {evalRes.responsibility.redacted_response && (
+                          <span className="text-[10px] font-mono text-[#4F46E5] bg-[#EEF0FE] border border-[#D9D6FE] px-2 py-0.5 rounded">
+                            Automated Redaction Available
                           </span>
-                          <p className="text-[#344054] text-sm font-sans">{item.prompt}</p>
-                        </div>
-                        <div className="glass-inset rounded-xl p-4">
-                          <span className="text-[11px] text-[#667085] block mb-1.5 font-medium">
-                            Retrieved context (knowledge base)
-                          </span>
-                          <p className="text-[#475467] italic leading-relaxed text-xs font-sans">
-                            {item.retrieved_context || '[No context retrieved]'}
-                          </p>
-                        </div>
+                        )}
                       </div>
 
-                      {/* Right: AI Response or Editor */}
-                      <div className="space-y-3">
-                        <div className="glass-inset rounded-xl p-4">
-                          <div className="flex justify-between items-center mb-2">
-                            <span className="text-[11px] text-[#667085] font-medium">
-                              AI model response
-                            </span>
-                            <span className="inline-flex items-center text-[10px] text-[#B42318] font-semibold bg-[#FEF3F2] px-2 py-0.5 rounded-md border border-[#FECDCA]">
-                              Withheld
-                            </span>
-                          </div>
-
-                          {isEditing ? (
-                            <div className="space-y-3 mt-2">
-                              <textarea
-                                value={editedText}
-                                onChange={(e) => setEditedText(e.target.value)}
-                                rows={5}
-                                className="w-full glass-input rounded-xl p-3 text-xs text-[#101828] font-mono placeholder:text-[#98A2B3]"
-                                placeholder="Edit the response to sanitize PII or correct hallucinated claims..."
-                              />
-                              <div className="flex justify-end space-x-2">
-                                <button
-                                  onClick={() => setEditingId(null)}
-                                  className="px-3.5 py-1.5 rounded-xl text-xs font-medium glass-btn-secondary text-[#344054] hover:text-[#101828] cursor-pointer"
-                                >
-                                  Cancel
-                                </button>
-                                <button
-                                  onClick={() => handleSaveEditAllow(item, evalRes)}
-                                  className="px-4 py-1.5 rounded-xl text-xs font-medium bg-[#067647] hover:bg-[#055C37] text-white transition-colors shadow-sm cursor-pointer"
-                                >
-                                  Approve &amp; Dispatch Sanitized
-                                </button>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="bg-white/90 p-3.5 rounded-xl border border-slate-200 shadow-inner">
-                              {renderHighlightedResponse(item.response, evalRes)}
-                            </div>
-                          )}
-
-                          {/* Triggering Violations Legend */}
-                          {!isEditing &&
-                            (evalRes.performance.triggering_spans.length > 0 ||
-                              evalRes.responsibility.triggering_spans.length > 0) && (
-                              <div className="pt-2.5 border-t border-slate-200 text-xs space-y-1.5 mt-2">
-                                <span className="text-[#667085] font-medium text-[11px] block">
-                                  Triggering violations detected in response:
-                                </span>
-                                <div className="flex flex-wrap gap-1.5">
-                                  {evalRes.performance.triggering_spans.map((s, idx) => (
-                                    <span
-                                      key={`perf-${idx}`}
-                                      className="px-2.5 py-0.5 rounded-lg bg-[#FEF3F2] text-[#B42318] border border-[#FECDCA] text-[10px] font-medium shadow-xs"
-                                    >
-                                      Claim Mismatch: "{s.text}"
-                                    </span>
-                                  ))}
-                                  {evalRes.responsibility.triggering_spans.map((s, idx) => (
-                                    <span
-                                      key={`resp-${idx}`}
-                                      className={`px-2.5 py-0.5 rounded-lg text-[10px] font-medium border shadow-xs ${
-                                        s.type === 'pii'
-                                          ? 'bg-[#FFFAEB] text-[#B54708] border-[#FEDF89]'
-                                          : 'bg-[#F4F3FF] text-[#6941C6] border-[#D9D6FE]'
-                                      }`}
-                                    >
-                                      {s.type.toUpperCase()}: "{s.text}"
-                                    </span>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                        </div>
-
-                        {/* Review Notes Input */}
-                        <div>
-                          <input
-                            type="text"
-                            placeholder="Optional reviewer notes / feedback rationale..."
-                            value={reviewNotes[item.id] || ''}
-                            onChange={(e) =>
-                              setReviewNotes((prev) => ({ ...prev, [item.id]: e.target.value }))
-                            }
-                            className="w-full glass-input rounded-xl px-4 py-2.5 text-xs text-[#101828] placeholder:text-[#98A2B3]"
+                      {isEditing ? (
+                        <div className="space-y-3 pt-2">
+                          <textarea
+                            value={editedText}
+                            onChange={(e) => setEditedText(e.target.value)}
+                            rows={4}
+                            className="w-full glass-input rounded-xl p-3 font-mono text-xs text-[#101828] focus:ring-2 focus:ring-[#4F46E5] outline-none"
+                            placeholder="Edit response before releasing..."
                           />
+                          <div className="flex justify-end space-x-2">
+                            <button
+                              onClick={() => setEditingId(null)}
+                              className="px-3 py-1.5 rounded-lg text-xs font-medium text-[#475467] hover:bg-slate-100 transition-colors"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              onClick={() => handleSaveEditAllow(item, evalRes)}
+                              className="px-4 py-1.5 rounded-lg text-xs font-medium bg-[#4F46E5] text-white hover:bg-[#4338CA] transition-colors shadow-xs"
+                            >
+                              Approve Sanitized Version
+                            </button>
+                          </div>
                         </div>
+                      ) : (
+                        renderHighlightedResponse(item.response, evalRes)
+                      )}
+                    </div>
+
+                    {/* Lane Risk Analysis Grid */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                      {/* Performance */}
+                      <div className="p-3 rounded-xl border border-slate-200/80 bg-white/60 space-y-1">
+                        <div className="flex items-center justify-between text-[#667085]">
+                          <span>Performance Lane</span>
+                          <span className="font-mono font-semibold tnum">
+                            {(evalRes.performance.groundedness_score * 100).toFixed(0)}%
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-[#344054] truncate">
+                          {evalRes.performance.is_confidently_wrong
+                            ? '🚨 Confidently Wrong'
+                            : evalRes.performance.groundedness_score < 0.5
+                              ? '⚠️ Low Grounding'
+                              : '✅ Verified Grounding'}
+                        </p>
                       </div>
+
+                      {/* Cost */}
+                      <div className="p-3 rounded-xl border border-slate-200/80 bg-white/60 space-y-1">
+                        <div className="flex items-center justify-between text-[#667085]">
+                          <span>Cost & Reliability</span>
+                          <span className="font-mono font-semibold tnum">{item.latency_ms}ms</span>
+                        </div>
+                        <p className="text-[11px] text-[#344054] truncate">
+                          {evalRes.cost.is_runaway_loop
+                            ? '🚨 Runaway Loop'
+                            : evalRes.cost.is_token_outlier
+                              ? '⚠️ Token Outlier'
+                              : '✅ Within Budget'}
+                        </p>
+                      </div>
+
+                      {/* Responsibility */}
+                      <div className="p-3 rounded-xl border border-slate-200/80 bg-white/60 space-y-1">
+                        <div className="flex items-center justify-between text-[#667085]">
+                          <span>Responsibility</span>
+                          <span className="font-mono font-semibold tnum">
+                            {evalRes.responsibility.risk_score > 0.5 ? 'HIGH RISK' : 'CLEAN'}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-[#344054] truncate">
+                          {evalRes.responsibility.pii_detected
+                            ? '🚨 PII Leak Detected'
+                            : evalRes.responsibility.bias_detected
+                              ? '⚠️ Bias / Redlining'
+                              : '✅ Policy Compliant'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Review Notes Input */}
+                    <div className="space-y-1.5 pt-1">
+                      <label className="text-[11px] font-semibold text-[#475467] block">
+                        Reviewer Rationale & Audit Notes
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Optional reviewer notes / feedback rationale..."
+                        value={reviewNotes[item.id] || (existingDecision?.notes ?? '')}
+                        onChange={(e) =>
+                          setReviewNotes((prev) => ({ ...prev, [item.id]: e.target.value }))
+                        }
+                        className="w-full glass-input rounded-xl px-4 py-2.5 text-xs text-[#101828] placeholder:text-[#98A2B3]"
+                      />
                     </div>
 
                     {/* Reviewer Action Bar */}
                     {!isEditing && (
                       <div className="flex flex-wrap items-center justify-between gap-4 pt-4 border-t border-slate-200">
-                        <span className="text-xs text-[#667085] font-medium">
-                          Triage decision for frontline review
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-[#667085] font-medium">
+                            {isTriaged ? 'Triage status:' : 'Triage decision for frontline review:'}
+                          </span>
+                          {isTriaged && (
+                            <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                              {existingDecision?.action} by {existingDecision?.reviewer}
+                            </span>
+                          )}
+                        </div>
+
                         <div className="flex flex-wrap items-center gap-3">
+                          {isTriaged && onDeleteReview && (
+                            <button
+                              onClick={() => handleReopenItem(item.id)}
+                              className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-xl text-xs font-medium text-[#475467] bg-white border border-slate-200 hover:bg-slate-50 transition-all cursor-pointer shadow-xs"
+                              title="Delete this decision and reopen item to pending queue"
+                            >
+                              <RotateCcw className="h-3.5 w-3.5" />
+                              <span>Reopen Item</span>
+                            </button>
+                          )}
+
                           <button
                             onClick={() => handleConfirmBlock(item, evalRes)}
                             className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl text-xs font-medium bg-[#B42318] hover:bg-[#912018] text-white transition-all cursor-pointer shadow-xs active:scale-[0.98]"
                           >
                             <ShieldAlert className="h-3.5 w-3.5" />
-                            <span>Confirm Block</span>
+                            <span>{isTriaged ? 'Re-confirm Block' : 'Confirm Block'}</span>
                           </button>
 
                           <button
@@ -636,7 +791,7 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
                             className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl text-xs font-medium glass-btn-secondary text-[#344054] hover:text-[#101828] transition-all cursor-pointer"
                           >
                             <ShieldCheck className="h-3.5 w-3.5 text-[#12B76A]" />
-                            <span>Override to Allow</span>
+                            <span>{isTriaged ? 'Re-override to Allow' : 'Override to Allow'}</span>
                           </button>
                         </div>
                       </div>
@@ -649,19 +804,38 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
         )}
       </div>
 
-      {/* 3. Decision Audit Log Table */}
+      {/* 3. Append-Only Decision Audit Trail Table */}
       <div className="glass-panel rounded-2xl p-6 space-y-4">
-        <div className="flex items-center justify-between border-b border-slate-200 pb-3 gap-3">
-          <h3 className="font-headline text-lg text-[#101828] font-semibold tracking-tight flex items-center">
-            <History className="h-5 w-5 text-[#2E90FA] mr-2.5" />
-            Append-Only Review Decision Audit Trail (FR-20 / FR-25)
-          </h3>
-          <span className="text-xs text-[#667085] whitespace-nowrap font-medium">
-            <span className="font-mono tnum text-[#475467] font-semibold">
-              {reviewDecisions.length}
-            </span>{' '}
-            recorded decisions
-          </span>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-200 pb-3 gap-3">
+          <div>
+            <h3 className="font-headline text-lg text-[#101828] font-semibold tracking-tight flex items-center">
+              <History className="h-5 w-5 text-[#2E90FA] mr-2.5" />
+              Append-Only Review Decision Audit Trail (FR-20 / FR-25)
+            </h3>
+            <p className="text-xs text-[#667085] mt-0.5">
+              Immutable compliance ledger of frontline human adjudications.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-[#667085] whitespace-nowrap font-medium">
+              <span className="font-mono tnum text-[#475467] font-semibold">
+                {reviewDecisions.length}
+              </span>{' '}
+              recorded decisions
+            </span>
+
+            {reviewDecisions.length > 0 && onClearReviews && (
+              <button
+                onClick={handleResetSession}
+                className="px-3 py-1.5 rounded-xl text-xs font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
+                title="Wipe review session and restore all interactions to pending triage"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                <span>Clear Audit Session</span>
+              </button>
+            )}
+          </div>
         </div>
 
         {reviewDecisions.length === 0 ? (
@@ -680,6 +854,7 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
                   <th className="py-3 px-4">Action</th>
                   <th className="py-3 px-4">Verdict Shift</th>
                   <th className="py-3 px-4">Notes</th>
+                  <th className="py-3 px-4 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 text-xs">
@@ -717,6 +892,18 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
                       </div>
                     </td>
                     <td className="py-3 px-4 text-[#475467] max-w-xs truncate">{d.notes}</td>
+                    <td className="py-3 px-4 text-right">
+                      {onDeleteReview && (
+                        <button
+                          onClick={() => handleReopenItem(d.interaction_id)}
+                          className="px-2 py-1 rounded-lg text-[11px] text-[#667085] hover:text-rose-600 hover:bg-rose-50 transition-colors inline-flex items-center gap-1 cursor-pointer"
+                          title="Reopen interaction back to pending triage queue"
+                        >
+                          <RotateCcw className="h-3 w-3" />
+                          <span>Reopen</span>
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>

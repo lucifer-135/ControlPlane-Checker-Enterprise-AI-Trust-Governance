@@ -10,6 +10,8 @@ import {
   insertInteractionWithEvaluation,
   getReviewDecisions,
   insertReviewDecision,
+  clearReviewDecisions,
+  deleteReviewDecision,
   getPolicyProfiles,
   updatePolicyProfile,
   resetDatabase,
@@ -132,6 +134,27 @@ app.post('/api/reviews', async (req, res) => {
     res.status(201).json({ success: true, decision });
   } catch (error: any) {
     console.error('Error saving review decision:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/reviews', async (_req, res) => {
+  try {
+    await clearReviewDecisions();
+    res.json({ success: true, message: 'All review decisions cleared.' });
+  } catch (error: any) {
+    console.error('Error clearing review decisions:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/reviews/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await deleteReviewDecision(id);
+    res.json({ success: true, message: `Review decision ${id} deleted.` });
+  } catch (error: any) {
+    console.error('Error deleting review decision:', error);
     res.status(500).json({ error: error.message });
   }
 });

@@ -9,7 +9,7 @@
 [![SQLite / libSQL](https://img.shields.io/badge/Database-SQLite_3-003B57?logo=sqlite&logoColor=white)](https://sqlite.org/)
 [![Express](https://img.shields.io/badge/Express-4.21-000000?logo=express&logoColor=white)](https://expressjs.com/)
 [![Google Gemini API](https://img.shields.io/badge/Google_Gemini-3.6_Flash-8E75B2?logo=google&logoColor=white)](https://ai.google.dev/)
-[![Tests](https://img.shields.io/badge/Tests-72_passed-brightgreen)](<>)
+[![Tests](https://img.shields.io/badge/Tests-74_passed-brightgreen)](<>)
 [![Code Style](https://img.shields.io/badge/Code_Style-Prettier-ff69b4?logo=prettier&logoColor=white)](https://prettier.io/)
 
 > A high-throughput, model-agnostic enterprise governance and trust layer that scores AI interactions across **Performance**, **Cost**, and **Responsibility** in real-time, enforcing policy tiers (`ALLOW`, `BADGE`, `SOFT_CORRECT`, `BLOCK_ESCALATE`) with Gemini LLM Judge tie-breaking.

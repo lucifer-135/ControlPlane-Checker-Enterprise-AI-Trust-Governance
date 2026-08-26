@@ -392,6 +392,20 @@ export async function insertReviewDecision(
   });
 }
 
+export async function clearReviewDecisions(client: Client = getDb()): Promise<void> {
+  await client.execute('DELETE FROM review_decisions');
+}
+
+export async function deleteReviewDecision(
+  idOrInteractionId: string,
+  client: Client = getDb(),
+): Promise<void> {
+  await client.execute({
+    sql: 'DELETE FROM review_decisions WHERE id = ? OR interaction_id = ?',
+    args: [idOrInteractionId, idOrInteractionId],
+  });
+}
+
 export async function getPolicyProfiles(
   client: Client = getDb(),
 ): Promise<Record<UseCaseId, PolicyProfile>> {

@@ -86,6 +86,30 @@ export async function submitReviewDecisionApi(decision: ReviewDecision): Promise
   }
 }
 
+export async function clearReviewsApi(): Promise<boolean> {
+  try {
+    const resp = await fetch('/api/reviews', {
+      method: 'DELETE',
+    });
+    return resp.ok;
+  } catch (err) {
+    console.warn('[API Client] Failed to clear reviews in DB:', err);
+    return false;
+  }
+}
+
+export async function deleteReviewApi(id: string): Promise<boolean> {
+  try {
+    const resp = await fetch(`/api/reviews/${id}`, {
+      method: 'DELETE',
+    });
+    return resp.ok;
+  } catch (err) {
+    console.warn('[API Client] Failed to delete review in DB:', err);
+    return false;
+  }
+}
+
 export async function fetchPoliciesApi(): Promise<Record<UseCaseId, PolicyProfile>> {
   try {
     const resp = await fetch('/api/policies');

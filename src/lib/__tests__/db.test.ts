@@ -12,6 +12,8 @@ import {
   insertInteractionWithEvaluation,
   getReviewDecisions,
   insertReviewDecision,
+  clearReviewDecisions,
+  deleteReviewDecision,
   getPolicyProfiles,
   updatePolicyProfile,
   resetDatabase,
@@ -156,6 +158,74 @@ describe('SQLite Database Layer', () => {
       // Most recent first
       expect(reviews[0].id).toBe('rev-02');
       expect(reviews[1].id).toBe('rev-01');
+    });
+
+    it('should delete an individual review decision by id or interaction_id', async () => {
+      const { interactions } = await getAllInteractions(testClient);
+
+      await insertReviewDecision(
+        {
+          id: 'rev-delete-test',
+          interaction_id: interactions[0].id,
+          reviewed_at: '2025-01-01T10:00:00Z',
+          reviewer: 'compliance_officer_1',
+          action: 'CONFIRM_BLOCK',
+          notes: 'Test note',
+          original_verdict: 'BLOCK_ESCALATE',
+          new_verdict: 'BLOCK_ESCALATE',
+          primary_trigger_lane: 'Responsibility',
+        },
+        testClient,
+      );
+
+      let reviews = await getReviewDecisions(testClient);
+      expect(reviews).toHaveLength(1);
+
+      await deleteReviewDecision('rev-delete-test', testClient);
+
+      reviews = await getReviewDecisions(testClient);
+      expect(reviews).toHaveLength(0);
+    });
+
+    it('should clear all review decisions in a session', async () => {
+      const { interactions } = await getAllInteractions(testClient);
+
+      await insertReviewDecision(
+        {
+          id: 'rev-1',
+          interaction_id: interactions[0].id,
+          reviewed_at: '2025-01-01T10:00:00Z',
+          reviewer: 'officer',
+          action: 'CONFIRM_BLOCK',
+          notes: 'Test note 1',
+          original_verdict: 'BLOCK_ESCALATE',
+          new_verdict: 'BLOCK_ESCALATE',
+          primary_trigger_lane: 'Responsibility',
+        },
+        testClient,
+      );
+      await insertReviewDecision(
+        {
+          id: 'rev-2',
+          interaction_id: interactions[1].id,
+          reviewed_at: '2025-01-01T11:00:00Z',
+          reviewer: 'officer',
+          action: 'OVERRIDE_ALLOW',
+          notes: 'Test note 2',
+          original_verdict: 'BLOCK_ESCALATE',
+          new_verdict: 'ALLOW',
+          primary_trigger_lane: 'Performance',
+        },
+        testClient,
+      );
+
+      let stats = await getDatabaseStats(testClient);
+      expect(stats.reviews).toBe(2);
+
+      await clearReviewDecisions(testClient);
+
+      stats = await getDatabaseStats(testClient);
+      expect(stats.reviews).toBe(0);
     });
   });
 

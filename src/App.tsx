@@ -22,7 +22,6 @@ import { PolicyProfilesTab } from './components/PolicyProfilesTab';
 import { TrustMetricsTab } from './components/TrustMetricsTab';
 import { InteractionTesterModal } from './components/InteractionTesterModal';
 import { AmbientShaderBackground } from './components/AmbientShaderBackground';
-import { Agentation } from 'agentation';
 
 export function App() {
   // Navigation & View State - Defaults to 'dashboard' overview at start
@@ -201,6 +200,7 @@ export function App() {
               activeUseCaseFilter={activeUseCase}
               setActiveUseCaseFilter={setActiveUseCase}
               streamTrigger={streamTrigger}
+              onStreamTriggerHandled={() => setStreamTrigger(0)}
             />
           )}
 
@@ -288,8 +288,6 @@ export function App() {
         </div>
       </footer>
 
-      {/* Visual Feedback Toolbar for AI Coding Agents */}
-      <Agentation />
     </div>
   );
 }

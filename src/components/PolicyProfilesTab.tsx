@@ -461,17 +461,29 @@ export const PolicyProfilesTab: React.FC<PolicyProfilesTabProps> = ({
                     Wait for lane check before streaming
                   </span>
                 </div>
-                <input
-                  type="checkbox"
-                  checked={currentProfile.pre_response_blocking}
-                  onChange={(e) =>
-                    onUpdateProfile(activeUseCase, {
-                      ...currentProfile,
-                      pre_response_blocking: e.target.checked,
-                    })
-                  }
-                  className="h-4 w-4 rounded bg-white/80 border-[#D5DAE1] accent-[#4F46E5] cursor-pointer"
-                />
+                <label className="relative inline-flex items-center gap-2.5 cursor-pointer select-none group">
+                  <input
+                    type="checkbox"
+                    checked={currentProfile.pre_response_blocking}
+                    onChange={(e) =>
+                      onUpdateProfile(activeUseCase, {
+                        ...currentProfile,
+                        pre_response_blocking: e.target.checked,
+                      })
+                    }
+                    className="sr-only peer"
+                  />
+                  <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-4 peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#4F46E5] transition-colors shadow-inner"></div>
+                  <span
+                    className={`text-[10px] font-mono font-semibold px-2 py-0.5 rounded-md transition-colors ${
+                      currentProfile.pre_response_blocking
+                        ? 'bg-[#EEF0FE] text-[#4F46E5] border border-[#D9D6FE]'
+                        : 'bg-slate-100 text-[#667085] border border-slate-200'
+                    }`}
+                  >
+                    {currentProfile.pre_response_blocking ? 'ON' : 'OFF'}
+                  </span>
+                </label>
               </div>
 
               {/* Latency Budget */}

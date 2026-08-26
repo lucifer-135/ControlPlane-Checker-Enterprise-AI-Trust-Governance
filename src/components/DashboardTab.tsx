@@ -26,7 +26,6 @@ import {
   Gauge,
   AlertTriangle,
   ArrowUpRight,
-  Sparkles,
 } from 'lucide-react';
 
 interface DashboardTabProps {
@@ -88,17 +87,6 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
     <div className="flex flex-col gap-14">
       {/* 1. Hero Section */}
       <section className="flex flex-col gap-6 max-w-4xl pt-2">
-        <div className="flex flex-wrap items-center gap-2.5">
-          <span className="glass-pill text-xs text-[#175CD3] px-3 py-1 rounded-full flex items-center gap-1.5 font-medium border-[#B2DDFF]/80">
-            <Sparkles className="w-3.5 h-3.5 text-[#2E90FA]" />
-            Executive Command Center
-          </span>
-          <span className="glass-pill text-xs text-[#067647] px-3 py-1 rounded-full flex items-center gap-1.5 font-medium border-[#ABEFC6]/80">
-            <span className="w-2 h-2 rounded-full bg-[#12B76A] animate-pulse"></span>
-            3-Lane Isolation Active
-          </span>
-        </div>
-
         <div>
           <h1 className="font-display text-4xl sm:text-5xl lg:text-6xl font-semibold text-[#101828] tracking-tight leading-[1.05]">
             Enterprise AI Trust &amp; <span className="bg-gradient-to-r from-[#4F46E5] to-[#7C3AED] bg-clip-text text-transparent">Governance</span>
@@ -130,7 +118,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
       <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5">
         {/* Metric 1 - Policy Interceptions */}
         <div
-          onClick={() => onNavigateTab('feed', undefined, true)}
+          onClick={() => onNavigateTab('feed')}
           className="glass-panel glass-hover rounded-2xl p-6 flex flex-col justify-between cursor-pointer group relative overflow-hidden"
         >
           <div className="absolute top-0 right-0 w-24 h-24 bg-rose-500/10 rounded-full blur-2xl pointer-events-none -z-10" />
@@ -160,7 +148,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
 
         {/* Metric 2 - Multi-lane Overlaps */}
         <div
-          onClick={() => onNavigateTab('feed', undefined, true)}
+          onClick={() => onNavigateTab('feed')}
           className="glass-panel glass-hover rounded-2xl p-6 flex flex-col justify-between cursor-pointer group relative overflow-hidden"
         >
           <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/10 rounded-full blur-2xl pointer-events-none -z-10" />
@@ -268,7 +256,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           {/* Module 1 - Live Inference Stream */}
           <div
-            onClick={() => onNavigateTab('feed', undefined, true)}
+            onClick={() => onNavigateTab('feed')}
             className="glass-panel glass-hover rounded-2xl p-6 flex flex-col gap-5 cursor-pointer group"
           >
             <div className="flex items-start gap-4">
@@ -407,7 +395,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
             Recent Governance Interceptions &amp; Violations
           </h2>
           <button
-            onClick={() => onNavigateTab('feed', undefined, true)}
+            onClick={() => onNavigateTab('feed')}
             className="text-xs text-[#4F46E5] hover:text-[#4338CA] font-medium transition-colors flex items-center gap-1 cursor-pointer"
           >
             <span>View all in stream</span>

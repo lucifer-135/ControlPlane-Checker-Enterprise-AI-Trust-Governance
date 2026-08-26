@@ -18,25 +18,23 @@
 
 ## 📌 Table of Contents
 
-1. [Overview & Problem Statement](#overview-problem-statement)
+1. [Overview & Problem Statement](#overview--problem-statement)
 2. [Solution Architecture](#solution-architecture)
-3. [The Three Governance Lanes](#three-governance-lanes)
+3. [The Three Governance Lanes](#the-three-governance-lanes)
 4. [Four-Tier Policy Enactment](#four-tier-policy-enactment)
-5. [Database & Audit Ledger](#database-audit-ledger)
+5. [Database & Audit Ledger](#database--audit-ledger)
 6. [REST API Reference](#rest-api-reference)
 7. [Key Platform Features](#key-platform-features)
-8. [Technology Stack & Dependencies](#technology-stack-dependencies)
+8. [Technology Stack & Dependencies](#technology-stack--dependencies)
 9. [Security & Privacy Posture](#security-privacy-posture)
-10. [Getting Started & Execution Instructions](#getting-started-execution-instructions)
+10. [Getting Started & Execution Instructions](#getting-started--execution-instructions)
 11. [Project Directory Layout](#project-directory-layout)
 12. [Contributing](#contributing)
 13. [License](#license)
 
 ---
 
-<a id="overview-problem-statement"></a>
-
-## 🚀 Overview & Problem Statement
+## Overview & Problem Statement
 
 Enterprises deploying Generative AI models into production encounter four catastrophic failure modes:
 
@@ -49,9 +47,7 @@ Enterprises deploying Generative AI models into production encounter four catast
 
 ---
 
-<a id="solution-architecture"></a>
-
-## 🏗️ Solution Architecture
+## Solution Architecture
 
 ```mermaid
 flowchart TD
@@ -106,9 +102,7 @@ flowchart TD
 
 ---
 
-<a id="three-governance-lanes"></a>
-
-## 🚦 The Three Governance Lanes
+## The Three Governance Lanes
 
 ### 1. 🎯 Performance & Groundedness Lane
 
@@ -135,9 +129,7 @@ flowchart TD
 
 ---
 
-<a id="four-tier-policy-enactment"></a>
-
-## 🎚️ Four-Tier Policy Enactment
+## Four-Tier Policy Enactment
 
 | Tier                 | Condition / Threshold                                         | Enactment Action                                                                             | Latency Overhead             |
 | :------------------- | :------------------------------------------------------------ | :------------------------------------------------------------------------------------------- | :--------------------------- |
@@ -148,9 +140,7 @@ flowchart TD
 
 ---
 
-<a id="key-platform-features"></a>
-
-## 🖥️ Key Platform Features
+## Key Platform Features
 
 ### 📊 1. Executive Telemetry Dashboard (`DashboardTab.tsx`)
 
@@ -190,9 +180,7 @@ flowchart TD
 
 ---
 
-<a id="database-audit-ledger"></a>
-
-## 🗄️ Database & Audit Ledger
+## Database & Audit Ledger
 
 ControlPlane Checker integrates an **embedded SQLite relational ledger** (powered by `@libsql/client`) providing zero-config local persistence without requiring external database services or Docker dependencies.
 
@@ -251,9 +239,7 @@ erDiagram
 
 ---
 
-<a id="rest-api-reference"></a>
-
-## 🌐 REST API Reference
+## REST API Reference
 
 The Express backend provides a complete RESTful interface for integration into external LLM gateways and pipelines:
 
@@ -271,9 +257,7 @@ The Express backend provides a complete RESTful interface for integration into e
 
 ---
 
-<a id="technology-stack-dependencies"></a>
-
-## 📦 Technology Stack & Dependencies
+## Technology Stack & Dependencies
 
 ### Core Frameworks & Libraries
 
@@ -291,9 +275,7 @@ The Express backend provides a complete RESTful interface for integration into e
 
 ---
 
-<a id="security-privacy-posture"></a>
-
-## 🔒 Security & Privacy Posture
+## Security & Privacy Posture
 
 - **Zero Client-Side Key Exposure**: The `GEMINI_API_KEY` is strictly accessed on the Node.js Express server. No API keys or secret credentials are ever bundled or transmitted to the client browser.
 - **Fail-Safe Heuristic Simulation**: In air-gapped environments or scenarios where `GEMINI_API_KEY` is omitted, the platform gracefully switches to deterministic semantic and statistical heuristics without failing requests.
@@ -303,9 +285,7 @@ The Express backend provides a complete RESTful interface for integration into e
 
 ---
 
-<a id="getting-started-execution-instructions"></a>
-
-## 💻 Getting Started & Execution Instructions
+## Getting Started & Execution Instructions
 
 ### Prerequisites
 
@@ -387,9 +367,7 @@ npm start
 
 ---
 
-<a id="project-directory-layout"></a>
-
-## 📂 Project Directory Layout
+## Project Directory Layout
 
 ```
 ControlPlane-Checker/
@@ -450,16 +428,12 @@ ControlPlane-Checker/
 
 ---
 
-<a id="contributing"></a>
-
-## 🤝 Contributing
+## Contributing
 
 Contributions are welcome! Please read the [Contributing Guide](CONTRIBUTING.md) for development setup, coding standards, and PR guidelines.
 
 ---
 
-<a id="license"></a>
-
-## 📄 License
+## License
 
 This project is licensed under the **Apache-2.0 License**. See [LICENSE](LICENSE) for details.

@@ -294,7 +294,6 @@ ControlPlane Checker provides an OpenAI-compatible reverse-proxy endpoint at `/v
 Every evaluation is recorded into a persistent SQLite database (`better-sqlite3` in WAL mode) with an immutable cryptographic HMAC-SHA256 chain:
 
 1. **Hash Chaining**: Each record computes its SHA-256 signature by hashing its payload together with the `current_hash` of the preceding record:
-
 ```math
 \text{Hash}_n = \text{HMAC-SHA256}(\text{Record}_n \mathbin{\Vert} \text{Hash}_{n-1}, \text{Secret})
 ```

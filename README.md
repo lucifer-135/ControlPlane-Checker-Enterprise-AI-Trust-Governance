@@ -338,24 +338,26 @@ rules:
 
 ## REST API reference
 
-| Endpoint                 | Method | Description                                                        |
-| :----------------------- | :----: | :----------------------------------------------------------------- |
-| `/v1/chat/completions`   | `POST` | OpenAI-compatible reverse proxy with streaming SSE interception    |
-| `/api/evaluate`          | `POST` | Evaluates a single interaction across all three governance lanes   |
-| `/api/evaluate/batch`    | `POST` | Batch evaluation of dataset against active policy profiles         |
-| `/api/policies`          | `GET`  | Retrieves all active YAML policy profiles                          |
-| `/api/policies/:useCase` | `PUT`  | Updates a specific policy profile at runtime                       |
-| `/api/policies/reset`    | `POST` | Resets policy profiles to YAML baseline configurations             |
-| `/api/baselines`         | `GET`  | Retrieves current Welford empirical distributions ($\mu, \sigma$)  |
-| `/api/baselines/observe` | `POST` | Feeds a new token/latency observation into the Welford accumulator |
-| `/api/audit-logs`        | `GET`  | Retrieves paginated audit trail records                            |
-| `/api/audit-logs/verify` | `GET`  | Verifies cryptographic HMAC-SHA256 chain integrity                 |
-| `/api/review-decisions`  | `GET`  | Queries persisted Human-in-the-Loop review decisions               |
-| `/api/review-decisions`  | `POST` | Persists an HITL triage decision to SQLite                         |
-| `/api/keys`              | `POST` | Generates a new tenant API key with rate limits                    |
-| `/api/metrics`           | `GET`  | Exports Prometheus metrics text format                             |
-| `/api/judge`             | `POST` | Invokes Gemini 3.6 Flash LLM Judge for semantic arbitration        |
-| `/api/health`            | `GET`  | Server health check and API key readiness status                   |
+| Endpoint                    |  Method  | Description                                                        |
+| :-------------------------- | :------: | :----------------------------------------------------------------- |
+| `/v1/chat/completions`      |  `POST`  | OpenAI-compatible reverse proxy with streaming SSE interception    |
+| `/api/evaluate`             |  `POST`  | Evaluates a single interaction across all three governance lanes   |
+| `/api/evaluate/batch`       |  `POST`  | Batch evaluation of dataset against active policy profiles         |
+| `/api/policies`             |  `GET`   | Retrieves all active YAML policy profiles                          |
+| `/api/policies/:useCase`    |  `PUT`   | Updates a specific policy profile at runtime                       |
+| `/api/policies/reset`       |  `POST`  | Resets policy profiles to YAML baseline configurations             |
+| `/api/baselines`            |  `GET`   | Retrieves current Welford empirical distributions ($\mu, \sigma$)  |
+| `/api/baselines/observe`    |  `POST`  | Feeds a new token/latency observation into the Welford accumulator |
+| `/api/audit-logs`           |  `GET`   | Retrieves paginated audit trail records                            |
+| `/api/audit-logs/verify`    |  `GET`   | Verifies cryptographic HMAC-SHA256 chain integrity                 |
+| `/api/review-decisions`     |  `GET`   | Queries persisted Human-in-the-Loop review decisions               |
+| `/api/review-decisions`     |  `POST`  | Persists an HITL triage decision to SQLite                         |
+| `/api/review-decisions/:id` | `DELETE` | Deletes a specific review decision and returns item to queue       |
+| `/api/review-decisions`     | `DELETE` | Resets / clears all recorded review decisions                      |
+| `/api/keys`                 |  `POST`  | Generates a new tenant API key with rate limits                    |
+| `/api/metrics`              |  `GET`   | Exports Prometheus metrics text format                             |
+| `/api/judge`                |  `POST`  | Invokes Gemini 3.6 Flash LLM Judge for semantic arbitration        |
+| `/api/health`               |  `GET`   | Server health check and API key readiness status                   |
 
 ## Key platform features
 
@@ -377,6 +379,7 @@ rules:
 - Side-by-side prompt, retrieved context, and model output view with colored span highlights.
 - 1-click arbitration actions: **Approve & Release**, **Overturn & Correct**, **Escalate to Legal/Security**, or **Trigger Gemini LLM Judge**.
 - Adjudications are persisted directly to SQLite with automated session audit logging.
+- **Delete / Reset Recorded Decisions**: Individual decisions can be deleted to return specific interactions back to the active review queue, or reset completely in bulk with confirmation to clear the session review state.
 
 ### 4. Policy Studio
 

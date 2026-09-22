@@ -169,6 +169,20 @@ export function App() {
     }).catch((err) => console.warn('Could not persist review decision to server:', err));
   };
 
+  const handleDeleteReviewDecision = (decisionId: string) => {
+    setReviewDecisions((prev) => prev.filter((d) => d.id !== decisionId));
+    fetch(`/api/review-decisions/${encodeURIComponent(decisionId)}`, {
+      method: 'DELETE',
+    }).catch((err) => console.warn('Could not delete review decision from server:', err));
+  };
+
+  const handleResetReviewDecisions = () => {
+    setReviewDecisions([]);
+    fetch('/api/review-decisions', {
+      method: 'DELETE',
+    }).catch((err) => console.warn('Could not reset review decisions on server:', err));
+  };
+
   // Call Gemini 3.6 Flash LLM Judge via server endpoint
   const handleRunJudge = async (interaction: SyntheticInteraction) => {
     try {
@@ -292,6 +306,8 @@ export function App() {
               evaluations={evaluations}
               reviewDecisions={reviewDecisions}
               onReviewDecision={handleReviewDecision}
+              onDeleteDecision={handleDeleteReviewDecision}
+              onResetDecisions={handleResetReviewDecisions}
               selectedReviewId={selectedReviewId}
               onClearSelectedReviewId={() => setSelectedReviewId(null)}
             />

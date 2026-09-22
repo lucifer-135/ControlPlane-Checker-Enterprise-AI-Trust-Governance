@@ -22,6 +22,8 @@ import {
   getAllAuditLogsForVerification,
   insertReviewDecision,
   getReviewDecisions,
+  deleteReviewDecision,
+  clearReviewDecisions,
   createNewApiKey,
 } from './src/server/db/database.js';
 import { verifyAuditChain } from './src/server/db/auditChain.js';
@@ -286,6 +288,30 @@ app.post('/api/review-decisions', (req, res) => {
     }
     insertReviewDecision(decision);
     res.json({ status: 'persisted', decision });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// DELETE /api/review-decisions/:id - Delete a specific review decision and restore item to queue
+app.delete('/api/review-decisions/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+    const deleted = deleteReviewDecision(id);
+    if (!deleted) {
+      return res.status(404).json({ error: 'Review decision not found' });
+    }
+    res.json({ status: 'deleted', id });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// DELETE /api/review-decisions - Reset / clear all recorded review decisions
+app.delete('/api/review-decisions', (_req, res) => {
+  try {
+    const count = clearReviewDecisions();
+    res.json({ status: 'cleared', count });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }

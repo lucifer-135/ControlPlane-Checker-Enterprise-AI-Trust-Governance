@@ -278,6 +278,16 @@ export function getReviewDecisions(interactionId?: string): ReviewDecision[] {
     .all() as ReviewDecision[];
 }
 
+export function deleteReviewDecision(id: string): boolean {
+  const result = getDb().prepare('DELETE FROM review_decisions WHERE id = ?').run(id);
+  return result.changes > 0;
+}
+
+export function clearReviewDecisions(): number {
+  const result = getDb().prepare('DELETE FROM review_decisions').run();
+  return result.changes;
+}
+
 // ──────────────────────────────────────────────────────────────────────
 // API Keys & Multi-Tenancy
 // ──────────────────────────────────────────────────────────────────────

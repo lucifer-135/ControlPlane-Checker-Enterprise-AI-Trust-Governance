@@ -11,6 +11,8 @@ import {
   getAllAuditLogsForVerification,
   insertReviewDecision,
   getReviewDecisions,
+  deleteReviewDecision,
+  clearReviewDecisions,
   createNewApiKey,
   getApiKeyBySecret,
   saveDbSessionState,
@@ -127,6 +129,20 @@ describe('Database Adapter (better-sqlite3)', () => {
     expect(retrieved).toHaveLength(1);
     expect(retrieved[0].reviewer).toBe('compliance_officer_alice');
     expect(retrieved[0].action).toBe('CONFIRM_BLOCK');
+
+    // Test deleting single decision
+    const deleted = deleteReviewDecision('rev-1');
+    expect(deleted).toBe(true);
+    expect(getReviewDecisions('int-test-1')).toHaveLength(0);
+
+    // Test clearing all decisions
+    insertReviewDecision(decision);
+    insertReviewDecision({ ...decision, id: 'rev-2', interaction_id: 'int-test-2' });
+    expect(getReviewDecisions()).toHaveLength(2);
+
+    const clearedCount = clearReviewDecisions();
+    expect(clearedCount).toBe(2);
+    expect(getReviewDecisions()).toHaveLength(0);
   });
 
   it('creates and authenticates API keys', () => {

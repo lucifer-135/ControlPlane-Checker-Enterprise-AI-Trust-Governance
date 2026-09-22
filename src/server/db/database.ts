@@ -42,7 +42,27 @@ export function getDb(): Database.Database {
   return db!;
 }
 
+export function closeDatabase(): void {
+  if (db) {
+    try {
+      db.close();
+    } catch {
+      // Ignore errors on close
+    }
+    db = null;
+  }
+}
+
 export function initDatabase(dbPath: string = DEFAULT_DB_PATH): Database.Database {
+  if (db) {
+    try {
+      db.close();
+    } catch {
+      // Ignore errors on close
+    }
+    db = null;
+  }
+
   const dir = path.dirname(dbPath);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });

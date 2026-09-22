@@ -3,9 +3,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   initDatabase,
+  closeDatabase,
   insertAuditLog,
   getAuditLogs,
   getAllAuditLogsForVerification,
@@ -25,6 +26,10 @@ describe('Database Adapter (better-sqlite3)', () => {
   beforeEach(() => {
     // In-memory test database for isolation
     initDatabase(':memory:');
+  });
+
+  afterEach(() => {
+    closeDatabase();
   });
 
   it('inserts and verifies chained audit logs', () => {

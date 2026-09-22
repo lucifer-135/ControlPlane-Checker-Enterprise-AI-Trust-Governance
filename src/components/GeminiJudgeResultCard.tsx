@@ -4,7 +4,14 @@
  */
 
 import React from 'react';
-import { Sparkles, CheckCircle2, AlertTriangle, AlertOctagon, HelpCircle, ShieldAlert } from 'lucide-react';
+import {
+  Sparkles,
+  CheckCircle2,
+  AlertTriangle,
+  AlertOctagon,
+  HelpCircle,
+  ShieldAlert,
+} from 'lucide-react';
 
 export interface JudgeData {
   verdict: string;
@@ -14,6 +21,7 @@ export interface JudgeData {
   certaintySupportMismatch?: number;
   triggeringSpans?: string[];
   isLiveLLM?: boolean;
+  modelUsed?: string;
 }
 
 interface GeminiJudgeResultCardProps {
@@ -43,7 +51,11 @@ export const GeminiJudgeResultCard: React.FC<GeminiJudgeResultCardProps> = ({
     borderDivider: 'border-slate-200',
   };
 
-  if (verdictUpper.includes('SUPPORTED') && !verdictUpper.includes('UNSUPPORTED') && !verdictUpper.includes('PARTIAL')) {
+  if (
+    verdictUpper.includes('SUPPORTED') &&
+    !verdictUpper.includes('UNSUPPORTED') &&
+    !verdictUpper.includes('PARTIAL')
+  ) {
     // Verified / Grounded
     theme = {
       container: 'bg-[#F6FEF9]/90 border-[#ABEFC6]',
@@ -85,7 +97,11 @@ export const GeminiJudgeResultCard: React.FC<GeminiJudgeResultCardProps> = ({
       statMismatch: 'text-[#B42318]',
       borderDivider: 'border-slate-200',
     };
-  } else if (verdictUpper.includes('UNSUPPORTED') || verdictUpper.includes('UNGROUNDED') || verdictUpper.includes('BLOCK')) {
+  } else if (
+    verdictUpper.includes('UNSUPPORTED') ||
+    verdictUpper.includes('UNGROUNDED') ||
+    verdictUpper.includes('BLOCK')
+  ) {
     // Policy Violations / Ungrounded
     theme = {
       container: 'bg-[#F4F3FF]/90 border-[#D9D6FE]',
@@ -101,12 +117,23 @@ export const GeminiJudgeResultCard: React.FC<GeminiJudgeResultCardProps> = ({
     };
   }
 
-  const groundednessPct = typeof judgeData.groundednessScore === 'number' ? Math.round(judgeData.groundednessScore * 100) : null;
-  const certaintyPct = typeof judgeData.certaintyScore === 'number' ? Math.round(judgeData.certaintyScore * 100) : null;
-  const mismatchPct = typeof judgeData.certaintySupportMismatch === 'number' ? Math.round(judgeData.certaintySupportMismatch * 100) : null;
+  const groundednessPct =
+    typeof judgeData.groundednessScore === 'number'
+      ? Math.round(judgeData.groundednessScore * 100)
+      : null;
+  const certaintyPct =
+    typeof judgeData.certaintyScore === 'number'
+      ? Math.round(judgeData.certaintyScore * 100)
+      : null;
+  const mismatchPct =
+    typeof judgeData.certaintySupportMismatch === 'number'
+      ? Math.round(judgeData.certaintySupportMismatch * 100)
+      : null;
 
   return (
-    <div className={`rounded-xl border p-5 space-y-4 transition-all backdrop-blur-xl backdrop-saturate-180 shadow-[0_8px_30px_rgba(0,0,0,0.04),inset_0_1px_0_0_rgba(255,255,255,0.95)] ${theme.container} ${className}`}>
+    <div
+      className={`rounded-xl border p-5 space-y-4 transition-all backdrop-blur-xl backdrop-saturate-180 shadow-[0_8px_30px_rgba(0,0,0,0.04),inset_0_1px_0_0_rgba(255,255,255,0.95)] ${theme.container} ${className}`}
+    >
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center space-x-2">
@@ -114,14 +141,16 @@ export const GeminiJudgeResultCard: React.FC<GeminiJudgeResultCardProps> = ({
             <Sparkles className={`h-4 w-4 ${theme.iconColor}`} />
           </div>
           <span className={`text-xs font-semibold font-headline tracking-tight ${theme.title}`}>
-            Gemini 3.6 Flash LLM Judge
+            {judgeData.modelUsed && judgeData.modelUsed !== 'heuristic-fallback'
+              ? `Gemini Judge (${judgeData.modelUsed})`
+              : 'Gemini LLM Judge'}
           </span>
         </div>
         <div className="flex items-center space-x-2">
-          <span className="text-[11px] text-[#667085] hidden sm:inline">
-            {theme.label}
-          </span>
-          <span className={`font-mono text-xs px-2.5 py-1 rounded-lg border font-semibold flex items-center space-x-1.5 backdrop-blur-md shadow-xs ${theme.badge}`}>
+          <span className="text-[11px] text-[#667085] hidden sm:inline">{theme.label}</span>
+          <span
+            className={`font-mono text-xs px-2.5 py-1 rounded-lg border font-semibold flex items-center space-x-1.5 backdrop-blur-md shadow-xs ${theme.badge}`}
+          >
             <theme.Icon className="h-3.5 w-3.5" />
             <span>{judgeData.verdict}</span>
           </span>
@@ -136,12 +165,13 @@ export const GeminiJudgeResultCard: React.FC<GeminiJudgeResultCardProps> = ({
       {/* Triggering Spans if any */}
       {judgeData.triggeringSpans && judgeData.triggeringSpans.length > 0 && (
         <div className="space-y-1.5">
-          <span className="text-[11px] font-medium text-[#667085]">
-            Triggering claims / spans
-          </span>
+          <span className="text-[11px] font-medium text-[#667085]">Triggering claims / spans</span>
           <div className="flex flex-wrap gap-1.5">
             {judgeData.triggeringSpans.map((span, idx) => (
-              <span key={idx} className="font-mono text-[11px] bg-[#FEF3F2]/90 text-[#B42318] border border-[#FECDCA] px-2 py-0.5 rounded-lg shadow-xs">
+              <span
+                key={idx}
+                className="font-mono text-[11px] bg-[#FEF3F2]/90 text-[#B42318] border border-[#FECDCA] px-2 py-0.5 rounded-lg shadow-xs"
+              >
                 "{span}"
               </span>
             ))}
@@ -154,15 +184,21 @@ export const GeminiJudgeResultCard: React.FC<GeminiJudgeResultCardProps> = ({
         <div className={`grid grid-cols-3 gap-3 pt-3 border-t ${theme.borderDivider}`}>
           <div className="glass-inset p-2.5 rounded-xl text-center">
             <div className="text-[10px] text-[#667085] font-medium mb-0.5">Groundedness</div>
-            <div className={`font-mono font-semibold tnum ${theme.statGroundedness}`}>{groundednessPct !== null ? `${groundednessPct}%` : 'N/A'}</div>
+            <div className={`font-mono font-semibold tnum ${theme.statGroundedness}`}>
+              {groundednessPct !== null ? `${groundednessPct}%` : 'N/A'}
+            </div>
           </div>
           <div className="glass-inset p-2.5 rounded-xl text-center">
             <div className="text-[10px] text-[#667085] font-medium mb-0.5">Certainty</div>
-            <div className={`font-mono font-semibold tnum ${theme.statCertainty}`}>{certaintyPct !== null ? `${certaintyPct}%` : 'N/A'}</div>
+            <div className={`font-mono font-semibold tnum ${theme.statCertainty}`}>
+              {certaintyPct !== null ? `${certaintyPct}%` : 'N/A'}
+            </div>
           </div>
           <div className="glass-inset p-2.5 rounded-xl text-center">
             <div className="text-[10px] text-[#667085] font-medium mb-0.5">Mismatch</div>
-            <div className={`font-mono font-semibold tnum ${theme.statMismatch}`}>{mismatchPct !== null ? `${mismatchPct}%` : 'N/A'}</div>
+            <div className={`font-mono font-semibold tnum ${theme.statMismatch}`}>
+              {mismatchPct !== null ? `${mismatchPct}%` : 'N/A'}
+            </div>
           </div>
         </div>
       )}

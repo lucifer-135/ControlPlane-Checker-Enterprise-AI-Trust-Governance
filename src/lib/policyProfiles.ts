@@ -9,7 +9,8 @@ export const DEFAULT_POLICY_PROFILES: Record<UseCaseId, PolicyProfile> = {
   support_bot: {
     use_case: 'support_bot',
     name: 'Customer Support Bot Profile',
-    description: 'High-throughput, customer-facing tier. Strict against toxic language and PII disclosures with low added latency.',
+    description:
+      'High-throughput, customer-facing tier. Strict against toxic language and PII disclosures with low added latency.',
     geography_ruleset: 'EU_AI_ACT_STANDARD',
     latency_budget_ms: 180,
     pre_response_blocking: false,
@@ -19,18 +20,18 @@ export const DEFAULT_POLICY_PROFILES: Record<UseCaseId, PolicyProfile> = {
       responsibility: true,
     },
     lane_weights: {
-      performance: 0.40,
-      cost: 0.30,
-      responsibility: 0.30,
+      performance: 0.4,
+      cost: 0.3,
+      responsibility: 0.3,
     },
     thresholds: {
-      block_escalate: 0.70,
+      block_escalate: 0.7,
       soft_correct: 0.45,
       badge: 0.25,
       cost_z_score_cutoff: 2.0,
-      pii_severity_cutoff: 0.30,
-      hallucination_cutoff: 0.40,
-      toxicity_cutoff: 0.40,
+      pii_severity_cutoff: 0.3,
+      hallucination_cutoff: 0.4,
+      toxicity_cutoff: 0.4,
     },
     timeout_fallback: 'UNKNOWN_FLAG',
     version: '2.4.1-rc',
@@ -38,7 +39,8 @@ export const DEFAULT_POLICY_PROFILES: Record<UseCaseId, PolicyProfile> = {
   internal_copilot: {
     use_case: 'internal_copilot',
     name: 'Internal Knowledge Copilot Profile',
-    description: 'Medium-latency budget. Focused on intellectual property protection, internal executive compensation privacy, and code correctness.',
+    description:
+      'Medium-latency budget. Focused on intellectual property protection, internal executive compensation privacy, and code correctness.',
     geography_ruleset: 'INTERNAL_IP_SECURITY',
     latency_budget_ms: 250,
     pre_response_blocking: false,
@@ -50,15 +52,15 @@ export const DEFAULT_POLICY_PROFILES: Record<UseCaseId, PolicyProfile> = {
     lane_weights: {
       performance: 0.45,
       cost: 0.15,
-      responsibility: 0.40,
+      responsibility: 0.4,
     },
     thresholds: {
       block_escalate: 0.65,
-      soft_correct: 0.40,
-      badge: 0.20,
+      soft_correct: 0.4,
+      badge: 0.2,
       cost_z_score_cutoff: 2.5,
       pii_severity_cutoff: 0.25,
-      hallucination_cutoff: 0.40,
+      hallucination_cutoff: 0.4,
       toxicity_cutoff: 0.35,
     },
     timeout_fallback: 'UNKNOWN_FLAG',
@@ -67,7 +69,8 @@ export const DEFAULT_POLICY_PROFILES: Record<UseCaseId, PolicyProfile> = {
   decision_support: {
     use_case: 'decision_support',
     name: 'Regulated Decision Support Profile',
-    description: 'Highest regulatory scrutiny (FINRA, ECOA, HIPAA). Pre-response blocking enabled for high-risk credit, loan, and insurance triage.',
+    description:
+      'Highest regulatory scrutiny (FINRA, ECOA, HIPAA). Pre-response blocking enabled for high-risk credit, loan, and insurance triage.',
     geography_ruleset: 'US_HIPAA_FINRA',
     latency_budget_ms: 400,
     pre_response_blocking: true,
@@ -77,9 +80,9 @@ export const DEFAULT_POLICY_PROFILES: Record<UseCaseId, PolicyProfile> = {
       responsibility: true,
     },
     lane_weights: {
-      performance: 0.50,
-      cost: 0.10,
-      responsibility: 0.40,
+      performance: 0.5,
+      cost: 0.1,
+      responsibility: 0.4,
     },
     thresholds: {
       block_escalate: 0.55,
@@ -87,7 +90,7 @@ export const DEFAULT_POLICY_PROFILES: Record<UseCaseId, PolicyProfile> = {
       badge: 0.18,
       cost_z_score_cutoff: 3.0,
       pii_severity_cutoff: 0.15,
-      hallucination_cutoff: 0.30,
+      hallucination_cutoff: 0.3,
       toxicity_cutoff: 0.25,
     },
     timeout_fallback: 'BLOCK',

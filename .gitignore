@@ -73,3 +73,12 @@ Thumbs.db
 *.tmp
 *.temp
 scratch/
+
+# SQLite databases & runtime data
+data/*.db
+data/*.db-wal
+data/*.db-shm
+data/*.db-journal
+*.sqlite
+*.sqlite3
+

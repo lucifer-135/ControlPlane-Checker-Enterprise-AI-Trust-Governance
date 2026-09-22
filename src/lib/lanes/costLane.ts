@@ -4,7 +4,7 @@
  */
 
 import { CostLaneResult, TokenUsage, UseCaseId } from '../../types';
-import { getBaseline } from '../../data/baselines';
+import { getBaseline, type QueryBaseline } from '../../data/baselines';
 
 export function evaluateCostLane(
   tokenCount: TokenUsage,
@@ -12,9 +12,10 @@ export function evaluateCostLane(
   useCase: UseCaseId,
   queryType: string,
   toolCallsCount: number = 0,
-  zScoreCutoff: number = 2.0
+  zScoreCutoff: number = 2.0,
+  baselineGetter: (useCase: UseCaseId, queryType: string) => QueryBaseline = getBaseline,
 ): CostLaneResult {
-  const baseline = getBaseline(useCase, queryType);
+  const baseline = baselineGetter(useCase, queryType);
 
   // Compute Z-scores for total tokens and latency
   const tokenZ = (tokenCount.total - baseline.mean_tokens) / baseline.stddev_tokens;
@@ -32,7 +33,7 @@ export function evaluateCostLane(
   if (isRunawayLoop) {
     riskScore = 0.95;
   } else if (combinedZ > 0) {
-    riskScore = Math.min(1.0, (combinedZ / 4.0));
+    riskScore = Math.min(1.0, combinedZ / 4.0);
   }
 
   let explanation = `Normal resource consumption (Z-Score: ${combinedZ.toFixed(2)}, Latency: ${latencyMs}ms vs mean ${baseline.mean_latency_ms}ms).`;

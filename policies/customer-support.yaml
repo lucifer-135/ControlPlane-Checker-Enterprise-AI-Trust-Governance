@@ -1,0 +1,30 @@
+apiVersion: governance.controlplane.io/v1alpha1
+kind: PolicyProfile
+metadata:
+  name: support_bot
+  title: 'Customer Support EU AI Act Profile'
+  version: '2.4.1-prod'
+  description: 'High-throughput, customer-facing tier. Strict against toxic language and PII disclosures with low added latency.'
+spec:
+  jurisdiction: EU_AI_ACT_STANDARD
+  enactment:
+    default_mode: FAIL_OPEN
+    max_pipeline_latency_budget_ms: 180
+    timeout_fallback: UNKNOWN_FLAG
+  lanes:
+    performance:
+      min_groundedness: 0.60
+      confidently_wrong_action: SOFT_CORRECT
+    responsibility:
+      pii_severity_cutoff: 0.30
+      toxicity_cutoff: 0.40
+    cost:
+      token_z_score_cutoff: 2.0
+  weights:
+    performance: 0.40
+    cost: 0.30
+    responsibility: 0.30
+  thresholds:
+    block_escalate: 0.70
+    soft_correct: 0.45
+    badge: 0.25

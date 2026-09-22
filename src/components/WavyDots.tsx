@@ -24,10 +24,19 @@ export const WavyDots: React.FC<WavyDotsProps> = ({
   }[size];
 
   return (
-    <span className={`inline-flex items-center space-x-1.5 ${className}`} aria-label="Loading animation">
-      <span className={`${sizeClasses} ${color} rounded-full animate-wave-dot-1 inline-block shadow-sm`} />
-      <span className={`${sizeClasses} ${color} rounded-full animate-wave-dot-2 inline-block shadow-sm`} />
-      <span className={`${sizeClasses} ${color} rounded-full animate-wave-dot-3 inline-block shadow-sm`} />
+    <span
+      className={`inline-flex items-center space-x-1.5 ${className}`}
+      aria-label="Loading animation"
+    >
+      <span
+        className={`${sizeClasses} ${color} rounded-full animate-wave-dot-1 inline-block shadow-sm`}
+      />
+      <span
+        className={`${sizeClasses} ${color} rounded-full animate-wave-dot-2 inline-block shadow-sm`}
+      />
+      <span
+        className={`${sizeClasses} ${color} rounded-full animate-wave-dot-3 inline-block shadow-sm`}
+      />
     </span>
   );
 };

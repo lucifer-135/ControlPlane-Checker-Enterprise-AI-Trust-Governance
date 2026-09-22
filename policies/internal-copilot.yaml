@@ -1,0 +1,30 @@
+apiVersion: governance.controlplane.io/v1alpha1
+kind: PolicyProfile
+metadata:
+  name: internal_copilot
+  title: 'Internal Knowledge Copilot Profile'
+  version: '1.9.0-prod'
+  description: 'Medium-latency budget. Focused on intellectual property protection, internal executive compensation privacy, and code correctness.'
+spec:
+  jurisdiction: INTERNAL_IP_SECURITY
+  enactment:
+    default_mode: FAIL_OPEN
+    max_pipeline_latency_budget_ms: 250
+    timeout_fallback: UNKNOWN_FLAG
+  lanes:
+    performance:
+      min_groundedness: 0.60
+      confidently_wrong_action: SOFT_CORRECT
+    responsibility:
+      pii_severity_cutoff: 0.25
+      toxicity_cutoff: 0.35
+    cost:
+      token_z_score_cutoff: 2.5
+  weights:
+    performance: 0.45
+    cost: 0.15
+    responsibility: 0.40
+  thresholds:
+    block_escalate: 0.65
+    soft_correct: 0.40
+    badge: 0.20

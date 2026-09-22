@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   EvaluationResult,
   PolicyProfile,
@@ -14,6 +14,7 @@ import {
 import { SYNTHETIC_INTERACTIONS } from './data/interactions';
 import { DEFAULT_POLICY_PROFILES } from './lib/policyProfiles';
 import { evaluateDataset } from './lib/decisionEngine';
+import { evaluatePerformanceLane } from './lib/lanes/performanceLane';
 import { Header } from './components/Header';
 import { DashboardTab } from './components/DashboardTab';
 import { LiveFeedTab } from './components/LiveFeedTab';
@@ -25,24 +26,57 @@ import { AmbientShaderBackground } from './components/AmbientShaderBackground';
 
 export function App() {
   // Navigation & View State - Defaults to 'dashboard' overview at start
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'feed' | 'review' | 'policy' | 'metrics'>('dashboard');
+  const [activeTab, setActiveTab] = useState<
+    'dashboard' | 'feed' | 'review' | 'policy' | 'metrics'
+  >('dashboard');
   const [activeUseCase, setActiveUseCase] = useState<UseCaseId | 'ALL'>('ALL');
   const [policyUseCase, setPolicyUseCase] = useState<UseCaseId>('support_bot');
   const [isTesterOpen, setIsTesterOpen] = useState<boolean>(false);
 
   // Policy Profiles State
-  const [policyProfiles, setPolicyProfiles] = useState<Record<UseCaseId, PolicyProfile>>(
-    DEFAULT_POLICY_PROFILES
-  );
+  const [policyProfiles, setPolicyProfiles] =
+    useState<Record<UseCaseId, PolicyProfile>>(DEFAULT_POLICY_PROFILES);
 
   // Frontline Human Review Decisions Store
   const [reviewDecisions, setReviewDecisions] = useState<ReviewDecision[]>([]);
   const [selectedReviewId, setSelectedReviewId] = useState<string | null>(null);
 
-  // Real-time evaluation of the synthetic interactions dataset against active policy profiles
-  const { evaluations } = useMemo(() => {
-    return evaluateDataset(SYNTHETIC_INTERACTIONS, policyProfiles);
-  }, [policyProfiles]);
+  // Server-side evaluation state
+  const [evaluations, setEvaluations] = useState<Record<string, EvaluationResult>>({});
+  const [isEvaluating, setIsEvaluating] = useState<boolean>(true);
+
+  // Fetch evaluations from server-side engine
+  const fetchEvaluations = useCallback(async (profiles: Record<UseCaseId, PolicyProfile>) => {
+    setIsEvaluating(true);
+    try {
+      const resp = await fetch('/api/evaluate/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ profiles }),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        setEvaluations(data.evaluations);
+      } else {
+        // Fallback to client-side evaluation if server is unavailable
+        console.warn('Server evaluation unavailable, falling back to client-side');
+        const result = evaluateDataset(SYNTHETIC_INTERACTIONS, profiles);
+        setEvaluations(result.evaluations);
+      }
+    } catch (err) {
+      // Fallback to client-side evaluation on network error
+      console.warn('Server unreachable, falling back to client-side evaluation:', err);
+      const result = evaluateDataset(SYNTHETIC_INTERACTIONS, profiles);
+      setEvaluations(result.evaluations);
+    } finally {
+      setIsEvaluating(false);
+    }
+  }, []);
+
+  // Re-evaluate when policy profiles change
+  useEffect(() => {
+    fetchEvaluations(policyProfiles);
+  }, [policyProfiles, fetchEvaluations]);
 
   // Update a single policy profile
   const handleUpdateProfile = (useCase: UseCaseId, updated: PolicyProfile) => {
@@ -58,7 +92,7 @@ export function App() {
   const handleNavigateTab = (
     tab: 'dashboard' | 'feed' | 'review' | 'policy' | 'metrics',
     targetId?: string,
-    startLiveStream?: boolean
+    startLiveStream?: boolean,
   ) => {
     setActiveTab(tab);
     if (tab === 'review' && targetId) {
@@ -76,15 +110,24 @@ export function App() {
         return {
           support_bot: {
             ...prev.support_bot,
-            thresholds: { ...prev.support_bot.thresholds, block_escalate: newThreshold },
+            thresholds: {
+              ...prev.support_bot.thresholds,
+              block_escalate: newThreshold,
+            },
           },
           internal_copilot: {
             ...prev.internal_copilot,
-            thresholds: { ...prev.internal_copilot.thresholds, block_escalate: newThreshold },
+            thresholds: {
+              ...prev.internal_copilot.thresholds,
+              block_escalate: newThreshold,
+            },
           },
           decision_support: {
             ...prev.decision_support,
-            thresholds: { ...prev.decision_support.thresholds, block_escalate: newThreshold },
+            thresholds: {
+              ...prev.decision_support.thresholds,
+              block_escalate: newThreshold,
+            },
           },
         };
       }
@@ -92,7 +135,10 @@ export function App() {
         ...prev,
         [targetUseCase]: {
           ...prev[targetUseCase],
-          thresholds: { ...prev[targetUseCase].thresholds, block_escalate: newThreshold },
+          thresholds: {
+            ...prev[targetUseCase].thresholds,
+            block_escalate: newThreshold,
+          },
         },
       };
     });
@@ -102,8 +148,25 @@ export function App() {
     setPolicyProfiles(DEFAULT_POLICY_PROFILES);
   };
 
+  // Load persisted review decisions from server SQLite on mount
+  useEffect(() => {
+    fetch('/api/review-decisions')
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => {
+        if (Array.isArray(data) && data.length > 0) {
+          setReviewDecisions(data);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   const handleReviewDecision = (decision: ReviewDecision) => {
     setReviewDecisions((prev) => [decision, ...prev]);
+    fetch('/api/review-decisions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(decision),
+    }).catch((err) => console.warn('Could not persist review decision to server:', err));
   };
 
   // Call Gemini 3.6 Flash LLM Judge via server endpoint
@@ -130,22 +193,41 @@ export function App() {
       return await resp.json();
     } catch (err: any) {
       console.warn('Judge server request error, utilizing intelligent fallback:', err.message);
-      const isConfidentlyWrong =
-        interaction.response.toLowerCase().includes('guarantee') ||
-        interaction.response.toLowerCase().includes('100%') ||
-        interaction.response.toLowerCase().includes('unlimited') ||
-        interaction.response.toLowerCase().includes('definitely');
+      const perf = evaluatePerformanceLane(
+        interaction.prompt,
+        interaction.retrieved_context,
+        interaction.response,
+        interaction.use_case,
+      );
+
+      let verdict: 'SUPPORTED' | 'AMBIGUOUS' | 'CONFIDENTLY_WRONG' | 'UNSUPPORTED' = 'SUPPORTED';
+      if (perf.is_confidently_wrong) {
+        verdict = 'CONFIDENTLY_WRONG';
+      } else if (perf.groundedness_score < 0.4) {
+        verdict = 'UNSUPPORTED';
+      } else if (perf.is_ambiguous) {
+        verdict = 'AMBIGUOUS';
+      }
+
+      let reasoning =
+        'Autonomous Governance Evaluator: The response is verified and consistent with reference context bounds.';
+      if (verdict === 'CONFIDENTLY_WRONG') {
+        reasoning = `Autonomous Governance Evaluator: Assertion certainty bounds mismatch. The AI asserts high certainty that contradicts or fabricates claims beyond context (${perf.explanation}).`;
+      } else if (verdict === 'UNSUPPORTED') {
+        reasoning = `Autonomous Governance Evaluator: Response contains ungrounded assertions not substantiated by context (${perf.explanation}).`;
+      } else if (verdict === 'AMBIGUOUS') {
+        reasoning = `Autonomous Governance Evaluator: Borderline grounding support observed with partial context alignment (${perf.explanation}).`;
+      }
 
       return {
         isLiveLLM: false,
-        verdict: isConfidentlyWrong ? 'CONFIDENTLY_WRONG' : 'UNGROUNDED',
-        groundednessScore: isConfidentlyWrong ? 0.15 : 0.35,
-        certaintyScore: isConfidentlyWrong ? 0.95 : 0.70,
-        certaintySupportMismatch: isConfidentlyWrong ? 0.80 : 0.45,
-        reasoning: isConfidentlyWrong
-          ? 'Autonomous Governance Evaluator: AI asserts high certainty and absolute claims that contradict the retrieved policy bounds.'
-          : 'Autonomous Governance Evaluator: Response contains ungrounded factual assertions unsupported by the reference context.',
-        triggeringSpans: [interaction.response.slice(0, 80)],
+        modelUsed: 'autonomous-evaluator-fallback',
+        verdict,
+        groundednessScore: Number(perf.groundedness_score.toFixed(2)),
+        certaintyScore: Number(perf.certainty_score.toFixed(2)),
+        certaintySupportMismatch: Number(perf.certainty_support_mismatch.toFixed(2)),
+        reasoning,
+        triggeringSpans: perf.triggering_spans.map((s) => s.text),
       };
     }
   };
@@ -154,7 +236,7 @@ export function App() {
   const reviewQueueCount = useMemo(() => {
     const reviewedIds = new Set(reviewDecisions.map((d) => d.interaction_id));
     return SYNTHETIC_INTERACTIONS.filter(
-      (i) => evaluations[i.id]?.verdict === 'BLOCK_ESCALATE' && !reviewedIds.has(i.id)
+      (i) => evaluations[i.id]?.verdict === 'BLOCK_ESCALATE' && !reviewedIds.has(i.id),
     ).length;
   }, [evaluations, reviewDecisions]);
 
@@ -282,12 +364,13 @@ export function App() {
             </button>
             <div className="flex items-center gap-2 border-l border-slate-200 pl-6">
               <span className="w-1.5 h-1.5 rounded-full bg-[#12B76A]"></span>
-              <span className="font-mono text-[11px] text-[#475467] tnum font-semibold">Operational</span>
+              <span className="font-mono text-[11px] text-[#475467] tnum font-semibold">
+                Operational
+              </span>
             </div>
           </div>
         </div>
       </footer>
-
     </div>
   );
 }

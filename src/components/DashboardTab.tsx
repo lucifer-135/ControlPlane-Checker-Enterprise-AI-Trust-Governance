@@ -329,7 +329,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                   2. Frontline Review Queue
                 </h3>
                 <p className="text-[13px] text-[#667085] mt-1 leading-relaxed font-sans">
-                  Human-in-the-loop triage, inline PII redaction editor, and threshold drift
+                  Human-in-the-lead triage, inline PII redaction editor, and threshold drift
                   calibration feedback loop.
                 </p>
               </div>

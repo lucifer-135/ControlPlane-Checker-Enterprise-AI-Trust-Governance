@@ -232,7 +232,7 @@ flowchart TD
         PolicyRouter{"Composite Risk vs. YAML Policy"}
         Tiers["ALLOW | BADGE | SOFT_CORRECT | BLOCK_ESCALATE"]
         AuditChain["Tamper-Evident Audit Chain\n(SHA-256 HMAC chained SQLite)"]
-        ReviewQueue["Human-in-the-Loop Review Queue"]
+        ReviewQueue["Human-in-the-Lead Review Queue"]
     end
 
     ClientApp --> AuthCheck
@@ -350,7 +350,7 @@ rules:
 | `/api/baselines/observe`    |  `POST`  | Feeds a new token/latency observation into the Welford accumulator |
 | `/api/audit-logs`           |  `GET`   | Retrieves paginated audit trail records                            |
 | `/api/audit-logs/verify`    |  `GET`   | Verifies cryptographic HMAC-SHA256 chain integrity                 |
-| `/api/review-decisions`     |  `GET`   | Queries persisted Human-in-the-Loop review decisions               |
+| `/api/review-decisions`     |  `GET`   | Queries persisted Human-in-the-Lead review decisions               |
 | `/api/review-decisions`     |  `POST`  | Persists an HITL triage decision to SQLite                         |
 | `/api/review-decisions/:id` | `DELETE` | Deletes a specific review decision and returns item to queue       |
 | `/api/review-decisions`     | `DELETE` | Resets / clears all recorded review decisions                      |
@@ -375,7 +375,7 @@ rules:
 
 ### 3. Frontline Human Review Queue
 
-- Human-in-the-Loop (HITL) adjudication portal for blocked or escalated interactions.
+- Human-in-the-Lead (HITL) adjudication portal for blocked or escalated interactions.
 - Side-by-side prompt, retrieved context, and model output view with colored span highlights.
 - 1-click arbitration actions: **Approve & Release**, **Overturn & Correct**, **Escalate to Legal/Security**, or **Trigger Gemini LLM Judge**.
 - Adjudications are persisted directly to SQLite with automated session audit logging.

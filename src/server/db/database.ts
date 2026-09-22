@@ -8,7 +8,7 @@
  *
  * Provides thread-safe, synchronous local storage for:
  * - Tamper-evident chained audit records
- * - Human-in-the-loop (HITL) review adjudications
+ * - Human-in-the-lead (HITL) review adjudications
  * - Multi-tenant API keys and RBAC
  * - Cross-turn session risk state
  */

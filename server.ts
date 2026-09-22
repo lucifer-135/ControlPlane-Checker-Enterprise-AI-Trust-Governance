@@ -265,7 +265,7 @@ app.get('/api/audit-logs/verify', (_req, res) => {
 });
 
 // ──────────────────────────────────────────────────────────────────────
-// Human-In-The-Loop (HITL) Review Decision Endpoints
+// Human-In-The-Lead (HITL) Review Decision Endpoints
 // ──────────────────────────────────────────────────────────────────────
 
 // GET /api/review-decisions - Query persisted review decisions

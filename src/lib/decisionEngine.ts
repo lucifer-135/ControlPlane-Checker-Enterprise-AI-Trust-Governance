@@ -15,6 +15,7 @@ import {
 import { evaluatePerformanceLane } from './lanes/performanceLane';
 import { evaluateCostLane } from './lanes/costLane';
 import { evaluateResponsibilityLane } from './lanes/responsibilityLane';
+import type { QueryBaseline } from '../data/baselines';
 
 // ──────────────────────────────────────────────────────────────────────
 // Session state accumulator types
@@ -77,6 +78,7 @@ export function evaluateInteraction(
   interaction: SyntheticInteraction,
   policy: PolicyProfile,
   sessionStateInput: SessionState | number = { events: [], currentRisk: 0 },
+  baselineGetter?: (useCase: UseCaseId, queryType: string) => QueryBaseline,
 ): EvaluationResult {
   const sessionState: SessionState =
     typeof sessionStateInput === 'number'
@@ -116,6 +118,7 @@ export function evaluateInteraction(
     interaction.query_type,
     interaction.tool_calls_count || 0,
     policy.thresholds.cost_z_score_cutoff,
+    baselineGetter,
   );
 
   const responsibility = evaluateResponsibilityLane(
@@ -235,6 +238,7 @@ export function evaluateInteraction(
 export function evaluateDataset(
   interactions: SyntheticInteraction[],
   policyProfiles: Record<UseCaseId, PolicyProfile>,
+  baselineGetter?: (useCase: UseCaseId, queryType: string) => QueryBaseline,
 ): {
   evaluations: Record<string, EvaluationResult>;
   sessionAccumulators: SessionAccumulatorMap;
@@ -251,7 +255,7 @@ export function evaluateDataset(
     }
     const sessionState = sessionAccumulators[item.session_id];
 
-    const res = evaluateInteraction(item, policy, sessionState);
+    const res = evaluateInteraction(item, policy, sessionState, baselineGetter);
     evaluations[item.id] = res;
 
     // Update session state with this turn's risk event

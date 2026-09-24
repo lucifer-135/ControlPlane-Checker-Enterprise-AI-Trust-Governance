@@ -23,6 +23,7 @@ import { scanInput, type InputGuardResult } from './inputGuard.js';
 import { interceptStream } from './streamInterceptor.js';
 import { CircuitBreaker } from './circuitBreaker.js';
 import { calculateBackoffWithJitter, sleep } from './judge.js';
+import { globalBaselineTracker } from './rollingBaseline.js';
 
 // ──────────────────────────────────────────────────────────────────────
 // Upstream Provider Configuration
@@ -421,7 +422,19 @@ export async function handleChatCompletions(
     };
 
     const sessionState = getSessionState(sessionId);
-    const evaluation = evaluateInteraction(interaction, policy, sessionState);
+    const evaluation = evaluateInteraction(interaction, policy, sessionState, (u, q) =>
+      globalBaselineTracker.getBaseline(u, q),
+    );
+
+    // Feed clean observations back into the rolling baseline tracker
+    if (evaluation.verdict !== 'BLOCK_ESCALATE' && interaction.token_count.total > 0) {
+      globalBaselineTracker.recordObservation(
+        interaction.use_case,
+        interaction.query_type,
+        interaction.token_count.total,
+        interaction.latency_ms,
+      );
+    }
 
     // Update session state
     updateSessionState(sessionId, evaluation.composite_risk_score, turnNumber);

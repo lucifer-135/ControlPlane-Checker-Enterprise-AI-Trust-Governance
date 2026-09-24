@@ -4,7 +4,35 @@
  */
 
 import { CostLaneResult, TokenUsage, UseCaseId } from '../../types';
-import { getBaseline, type QueryBaseline } from '../../data/baselines';
+import { type QueryBaseline, getBaseline as getStaticBaseline } from '../../data/baselines';
+import { globalBaselineTracker } from '../rollingBaseline';
+
+export type BaselineGetter = (useCase: UseCaseId, queryType: string) => QueryBaseline;
+
+let activeBaselineGetter: BaselineGetter = (useCase, queryType) =>
+  globalBaselineTracker.getBaseline(useCase, queryType);
+
+/**
+ * Configure the active baseline getter for cost lane evaluation.
+ */
+export function setGlobalBaselineGetter(getter: BaselineGetter): void {
+  activeBaselineGetter = getter;
+}
+
+/**
+ * Reset the active baseline getter back to the global rolling baseline tracker.
+ */
+export function resetGlobalBaselineGetter(): void {
+  activeBaselineGetter = (useCase, queryType) =>
+    globalBaselineTracker.getBaseline(useCase, queryType);
+}
+
+/**
+ * Retrieve the active baseline for a given useCase and queryType.
+ */
+export function getActiveBaseline(useCase: UseCaseId, queryType: string): QueryBaseline {
+  return activeBaselineGetter(useCase, queryType);
+}
 
 export function evaluateCostLane(
   tokenCount: TokenUsage,
@@ -13,7 +41,7 @@ export function evaluateCostLane(
   queryType: string,
   toolCallsCount: number = 0,
   zScoreCutoff: number = 2.0,
-  baselineGetter: (useCase: UseCaseId, queryType: string) => QueryBaseline = getBaseline,
+  baselineGetter: BaselineGetter = getActiveBaseline,
 ): CostLaneResult {
   const baseline = baselineGetter(useCase, queryType);
 

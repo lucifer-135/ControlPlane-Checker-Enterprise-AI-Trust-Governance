@@ -20,6 +20,7 @@ import type { Response } from 'express';
 import { validateCreditCard } from '../lib/utils/luhn.js';
 import { evaluateInteraction } from '../lib/decisionEngine.js';
 import type { PolicyProfile, SessionState, SyntheticInteraction } from '../types.js';
+import { globalBaselineTracker } from './rollingBaseline.js';
 
 // Fast deterministic regexes for sliding window
 const SSN_FAST_REGEX = /\b(?!000|666|9\d{2})\d{3}[- ]\d{2}[- ]\d{4}\b/;
@@ -271,7 +272,9 @@ export async function interceptStream(
       },
     };
 
-    const postEval = evaluateInteraction(postInteraction, policy, sessionState);
+    const postEval = evaluateInteraction(postInteraction, policy, sessionState, (u, q) =>
+      globalBaselineTracker.getBaseline(u, q),
+    );
     sessionState.events.push({
       risk: postEval.composite_risk_score,
       turnNumber,

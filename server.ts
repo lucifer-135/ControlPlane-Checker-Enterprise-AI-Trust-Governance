@@ -216,6 +216,14 @@ app.post('/api/baselines/observe', (req, res) => {
   });
 });
 
+app.post('/api/baselines/reset', (_req, res) => {
+  globalBaselineTracker.reset(true);
+  res.json({
+    status: 'reset',
+    message: 'Rolling baseline tracker reset to seeded default metrics',
+  });
+});
+
 // ──────────────────────────────────────────────────────────────────────
 // Server-side Evaluation Endpoints
 // ──────────────────────────────────────────────────────────────────────
@@ -234,7 +242,22 @@ app.post('/api/evaluate', (req, res) => {
         currentRisk: 0,
       };
 
-    const result = evaluateInteraction(interaction, policy, sessionState);
+    if (
+      req.body.recordObservation === true &&
+      interaction.token_count?.total &&
+      interaction.latency_ms
+    ) {
+      globalBaselineTracker.recordObservation(
+        interaction.use_case,
+        interaction.query_type,
+        interaction.token_count.total,
+        interaction.latency_ms,
+      );
+    }
+
+    const result = evaluateInteraction(interaction, policy, sessionState, (u, q) =>
+      globalBaselineTracker.getBaseline(u, q),
+    );
 
     // Update session state
     if (!sessionAccumulators[interaction.session_id]) {
@@ -281,7 +304,9 @@ app.post('/api/evaluate/batch', (req, res) => {
 
     // Reset session accumulators for batch re-evaluation
     sessionAccumulators = {};
-    const result = evaluateDataset(interactions, profiles);
+    const result = evaluateDataset(interactions, profiles, (u, q) =>
+      globalBaselineTracker.getBaseline(u, q),
+    );
     sessionAccumulators = result.sessionAccumulators;
 
     // Persist batch evaluations to audit log & telemetry

@@ -10,7 +10,7 @@ ControlPlane Checker is an enterprise-grade AI trust, governance, and real-time 
 [![Express](https://img.shields.io/badge/Express-4.21-000000?logo=express&logoColor=white)](https://expressjs.com/)
 [![SQLite](https://img.shields.io/badge/SQLite-WAL_Mode-003B57?logo=sqlite&logoColor=white)](https://www.sqlite.org/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
-[![Vitest](https://img.shields.io/badge/Tests-92_Passing-6E9F18?logo=vitest&logoColor=white)](https://vitest.dev/)
+[![Vitest](https://img.shields.io/badge/Tests-99_Passing-6E9F18?logo=vitest&logoColor=white)](https://vitest.dev/)
 [![Google Gemini API](https://img.shields.io/badge/Google_Gemini-3.6%20%2F%203.8%20Flash-8E75B2?logo=google&logoColor=white)](https://ai.google.dev/)
 [![Ollama Qwen 2.5](https://img.shields.io/badge/Ollama-Qwen_2.5_7B-000000?logo=ollama&logoColor=white)](https://ollama.com/)
 
@@ -187,12 +187,13 @@ The platform includes a comprehensive test suite covering the three governance l
 npm run test
 ```
 
-### Test coverage areas (92 Passing Tests)
+### Test coverage areas (99 Passing Tests)
 
 | Test Suite              | File                                       | Tests | Coverage                                                         |
 | :---------------------- | :----------------------------------------- | :---: | :--------------------------------------------------------------- |
 | **LLM Judge Engine**    | `src/server/judge.test.ts`                 |   9   | Gemini backoff/jitter, local Qwen, dual consensus, normalization |
 | **Gateway Proxy**       | `src/server/gateway.test.ts`               |   8   | Model fallback, 503 backoff, PII redact/block, input guard       |
+| **Cost Lane (Welford)** | `src/lib/lanes/costLane.test.ts`           |   7   | Dynamic Welford baselines, runaway loops, Z-score adaptation     |
 | **Responsibility Lane** | `src/lib/lanes/responsibilityLane.test.ts` |  15   | SSN, email, phone, credit card, bias, regulatory rulesets        |
 | **Luhn Checksum**       | `src/lib/utils/luhn.test.ts`               |  15   | Credit card checksum validation, false positive suppression      |
 | **Performance Lane**    | `src/lib/lanes/performanceLane.test.ts`    |   8   | Grounding score, Certainty-Support Mismatch, CW detection        |
@@ -532,8 +533,10 @@ ControlPlane-Checker/
 │   │   ├── inputGuard.ts               # Shared input guard & prompt injection rules
 │   │   ├── metrics.ts                  # Confusion matrix & PR calculations
 │   │   ├── policyProfiles.ts           # Fallback policy profile definitions
+│   │   ├── rollingBaseline.ts          # Welford algorithm online streaming tracker
 │   │   ├── lanes/                      # Individual Lane Evaluators
 │   │   │   ├── costLane.ts             # Z-score outlier & runaway loop detector
+│   │   │   ├── costLane.test.ts        # Unit tests for cost lane & rolling baselines
 │   │   │   ├── performanceLane.ts      # Grounding & Confidently Wrong detector
 │   │   │   └── responsibilityLane.ts   # PII scanner, bias & regulatory rulesets
 │   │   └── utils/                      # Evaluation Utilities

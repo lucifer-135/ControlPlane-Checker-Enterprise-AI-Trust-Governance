@@ -319,9 +319,9 @@ ControlPlane Checker features an advanced, multi-tier LLM Judge architecture pro
 
 - **Parallel Adjudication**: Executes both Gemini Cloud and Local Qwen simultaneously.
 - **Consensus & Discrepancy Detection**: Compares verdicts (`AGREED` vs `DISAGREED`) and computes mathematical score deltas:
-  - $\Delta_{\text{groundedness}} = |\text{Score}_{\text{Gemini}} - \text{Score}_{\text{Qwen}}|$
-  - $\Delta_{\text{certainty}} = |\text{Score}_{\text{Gemini}} - \text{Score}_{\text{Qwen}}|$
-  - $\Delta_{\text{mismatch}} = |\text{Score}_{\text{Gemini}} - \text{Score}_{\text{Qwen}}|$
+  - $\Delta_{\text{groundedness}} = |\text{Score}_{\text{Gemini}}^{\text{groundedness}} - \text{Score}_{\text{Qwen}}^{\text{groundedness}}|$
+  - $\Delta_{\text{certainty}} = |\text{Score}_{\text{Gemini}}^{\text{certainty}} - \text{Score}_{\text{Qwen}}^{\text{certainty}}|$
+  - $\Delta_{\text{mismatch}} = |\text{Score}_{\text{Gemini}}^{\text{mismatch}} - \text{Score}_{\text{Qwen}}^{\text{mismatch}}|$
 - **Conservative Safety Override**: If models disagree on verdict, the platform automatically enacts the more protective risk tier (`CONFIDENTLY_WRONG` > `UNSUPPORTED` > `AMBIGUOUS` > `SUPPORTED`).
 - **Triggering Span Union**: Merges extracted problematic claim spans across both models.
 

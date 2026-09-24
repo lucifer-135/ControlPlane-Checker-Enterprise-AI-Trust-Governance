@@ -1,4 +1,5 @@
 import express from 'express';
+import http from 'http';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, Type } from '@google/genai';
@@ -28,6 +29,18 @@ import {
 } from './src/server/db/database.js';
 import { verifyAuditChain } from './src/server/db/auditChain.js';
 import { recordEvaluationTelemetry, getPrometheusMetricsText } from './src/server/telemetry.js';
+import {
+  evaluateJudgeRequest,
+  checkOllamaHealth,
+  type JudgeProvider,
+  type JudgeRequestOptions,
+} from './src/server/judge.js';
+import {
+  scanInput,
+  getRateLimitStatus,
+  recordSimulatedRequest,
+  resetRateLimits,
+} from './src/lib/inputGuard.js';
 
 dotenv.config();
 
@@ -38,6 +51,17 @@ const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
 app.use(express.json({ limit: '2mb' }));
+app.use((err: any, _req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (err instanceof SyntaxError && 'status' in err && (err as any).status === 400) {
+    return res.status(400).json({
+      error: {
+        message: 'Malformed JSON payload in request body',
+        type: 'invalid_request_error',
+      },
+    });
+  }
+  next(err);
+});
 
 // Lazy-initialized Gemini client
 let genAIClient: GoogleGenAI | null = null;
@@ -55,11 +79,19 @@ function getGeminiClient(): GoogleGenAI | null {
   return genAIClient;
 }
 
-// Health check endpoint
-app.get('/api/health', (_req, res) => {
+// Health check endpoint (checks Gemini API Key and Local Ollama status)
+app.get('/api/health', async (_req, res) => {
+  const localLLM = await checkOllamaHealth();
   res.json({
     status: 'ok',
     hasApiKey: Boolean(process.env.GEMINI_API_KEY),
+    localLLM: {
+      available: localLLM.available,
+      installed: localLLM.installed,
+      endpoint: localLLM.endpoint,
+      model: process.env.LOCAL_JUDGE_MODEL || 'qwen2.5:7b',
+      models: localLLM.models,
+    },
     timestamp: new Date().toISOString(),
   });
 });
@@ -112,6 +144,52 @@ app.post('/v1/chat/completions', (req, res) => {
 // Alias without /v1 prefix
 app.post('/chat/completions', (req, res) => {
   handleChatCompletions(req, res, serverPolicyProfiles);
+});
+
+// POST /api/input-guard - Live pre-flight input guard analysis
+app.post('/api/input-guard', (req, res) => {
+  try {
+    const input = req.body.input || req.body.prompt || '';
+    const apiKey = req.body.apiKey || 'cp_live_default_admin_key_2026';
+    const result = scanInput(input, apiKey);
+    const rateLimit = getRateLimitStatus(apiKey);
+    res.json({
+      ...result,
+      rateLimit,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Input guard evaluation failed' });
+  }
+});
+
+// POST /api/rate-limit/simulate - Simulate request bursts or reset rate limits
+app.post('/api/rate-limit/simulate', (req, res) => {
+  try {
+    const apiKey = req.body.apiKey || 'cp_live_default_admin_key_2026';
+    const count = parseInt(req.body.count, 10) || 10;
+    recordSimulatedRequest(apiKey, count);
+    res.json({
+      status: 'simulated',
+      added: count,
+      rateLimit: getRateLimitStatus(apiKey),
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/rate-limit/reset', (req, res) => {
+  try {
+    resetRateLimits();
+    const apiKey = req.body.apiKey || 'cp_live_default_admin_key_2026';
+    res.json({
+      status: 'reset',
+      rateLimit: getRateLimitStatus(apiKey),
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ──────────────────────────────────────────────────────────────────────
@@ -355,53 +433,7 @@ app.get('/api/metrics', (_req, res) => {
   res.send(getPrometheusMetricsText());
 });
 
-// Helper for dynamic semantic evaluation fallback
-function generateDynamicJudgeFallback(
-  prompt: string,
-  retrievedContext: string,
-  responseText: string,
-  useCase: UseCaseId,
-  claim?: string,
-  reasonPrefix: string = 'Autonomous Governance Evaluator',
-) {
-  const perf = evaluatePerformanceLane(prompt, retrievedContext, responseText, useCase);
-  let verdict: 'SUPPORTED' | 'AMBIGUOUS' | 'CONFIDENTLY_WRONG' | 'UNSUPPORTED' = 'SUPPORTED';
-
-  if (perf.is_confidently_wrong) {
-    verdict = 'CONFIDENTLY_WRONG';
-  } else if (perf.groundedness_score < 0.4) {
-    verdict = 'UNSUPPORTED';
-  } else if (perf.is_ambiguous) {
-    verdict = 'AMBIGUOUS';
-  }
-
-  let reasoning = `${reasonPrefix}: The response is consistent with and supported by the retrieved reference context.`;
-  if (verdict === 'CONFIDENTLY_WRONG') {
-    reasoning = `${reasonPrefix}: Assertion certainty bounds mismatch. The response makes assertive claims that directly contradict or exceed the provided reference context (${perf.explanation}).`;
-  } else if (verdict === 'UNSUPPORTED') {
-    reasoning = `${reasonPrefix}: The response contains assertions not substantiated by the provided reference context (${perf.explanation}).`;
-  } else if (verdict === 'AMBIGUOUS') {
-    reasoning = `${reasonPrefix}: Partial semantic overlap observed with borderline factual support (${perf.explanation}).`;
-  }
-
-  const triggeringSpans = perf.triggering_spans.map((s) => s.text);
-  if (triggeringSpans.length === 0 && verdict !== 'SUPPORTED') {
-    triggeringSpans.push(claim || responseText.slice(0, 80));
-  }
-
-  return {
-    isLiveLLM: false,
-    modelUsed: 'autonomous-evaluator-fallback',
-    groundednessScore: Number(perf.groundedness_score.toFixed(2)),
-    certaintyScore: Number(perf.certainty_score.toFixed(2)),
-    certaintySupportMismatch: Number(perf.certainty_support_mismatch.toFixed(2)),
-    verdict,
-    reasoning,
-    triggeringSpans,
-  };
-}
-
-// Gemini LLM Judge endpoint for ambiguous groundedness / tie-breaker evaluation
+// LLM Judge endpoint supporting Google Gemini, Local Qwen 2.5: 7B (Ollama), and Dual Consensus
 app.post('/api/judge', async (req, res) => {
   try {
     const prompt = req.body.prompt || '';
@@ -409,99 +441,25 @@ app.post('/api/judge', async (req, res) => {
     const responseText = req.body.responseText || req.body.response || '';
     const useCase = (req.body.useCase as UseCaseId) || 'support_bot';
     const claim = req.body.claim || '';
+    const provider = (req.body.provider || req.query.provider || 'gemini') as JudgeProvider;
+    const model = req.body.model;
+
+    const judgeOptions: JudgeRequestOptions = {
+      prompt,
+      retrievedContext,
+      responseText,
+      useCase,
+      claim,
+      provider,
+      model,
+    };
 
     const ai = getGeminiClient();
-    if (!ai) {
-      // Dynamic semantic evaluation when no live key is configured
-      return res
-        .status(200)
-        .json(
-          generateDynamicJudgeFallback(
-            prompt,
-            retrievedContext,
-            responseText,
-            useCase,
-            claim,
-            'Autonomous Evaluator (Local Engine)',
-          ),
-        );
-    }
+    const result = await evaluateJudgeRequest(judgeOptions, ai);
 
-    const systemPrompt = `You are an enterprise AI Governance LLM Judge for the ControlPlane Checker system.
-Evaluate the given AI Interaction for Groundedness, Hallucination, and Certainty vs. Support Mismatch.
-A "confidently wrong" response expresses high linguistic certainty (e.g. "is definitely", "guaranteed", "proven to be") while lacking supporting evidence in the retrieved context.
-
-Return ONLY a JSON object adhering to this schema:
-{
-  "groundednessScore": number (0.0 to 1.0, where 1.0 is 100% supported by context, 0.0 is pure fabrication),
-  "certaintyScore": number (0.0 to 1.0, linguistic confidence/assertiveness of the AI response),
-  "certaintySupportMismatch": number (0.0 to 1.0, discrepancy between asserted certainty and evidence support),
-  "verdict": "SUPPORTED" | "AMBIGUOUS" | "CONFIDENTLY_WRONG" | "UNSUPPORTED",
-  "reasoning": string (concise explanation of findings in 2-3 sentences),
-  "triggeringSpans": string[] (exact phrases in response that represent unsupported or exaggerated claims)
-}`;
-
-    const userContent = `Use Case: ${useCase || 'general'}
-User Prompt: ${prompt}
-Retrieved Context: ${retrievedContext || '[No context provided - verify general world knowledge and unverified claim bounds]'}
-AI Response: ${responseText}
-${claim ? `Specific Claim to Examine: "${claim}"` : ''}`;
-
-    let responseTextRaw = '{}';
-    let modelUsed = '';
-    const modelsToTry = [
-      'gemini-3.1-flash-lite-preview',
-      'gemini-3.1-flash-lite',
-      'gemini-3.6-flash',
-      'gemini-3.5-flash',
-      'gemini-3-flash-preview',
-    ];
-    let succeeded = false;
-
-    for (const model of modelsToTry) {
-      try {
-        const response = await ai.models.generateContent({
-          model,
-          contents: userContent,
-          config: {
-            systemInstruction: systemPrompt,
-            responseMimeType: 'application/json',
-          },
-        });
-        if (response.text) {
-          responseTextRaw = response.text.trim();
-          modelUsed = model;
-          succeeded = true;
-          break;
-        }
-      } catch (err: any) {
-        console.warn(`Model ${model} failed (${err.message}), trying next fallback...`);
-      }
-    }
-
-    if (!succeeded) {
-      // Dynamic fallback based on actual prompt, context, and response
-      return res.json(
-        generateDynamicJudgeFallback(
-          prompt,
-          retrievedContext,
-          responseText,
-          useCase,
-          claim,
-          'Autonomous Governance Evaluator (High-demand fallback)',
-        ),
-      );
-    }
-
-    const parsed = JSON.parse(responseTextRaw || '{}');
-    return res.json({
-      isLiveLLM: true,
-      modelUsed,
-      ...parsed,
-      verdict: (parsed.verdict || 'SUPPORTED').toUpperCase(),
-    });
+    return res.json(result);
   } catch (error: any) {
-    console.error('Gemini Judge error:', error);
+    console.error('Judge endpoint error:', error);
     return res.status(500).json({
       error: error.message || 'Failed to execute judge evaluation',
     });
@@ -509,10 +467,17 @@ ${claim ? `Specific Claim to Examine: "${claim}"` : ''}`;
 });
 
 async function startServer() {
+  const httpServer = http.createServer(app);
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        hmr: {
+          server: httpServer,
+        },
+      },
       appType: 'spa',
     });
     app.use(vite.middlewares);
@@ -524,9 +489,31 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  const server = httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`ControlPlane Checker Server running on http://localhost:${PORT}`);
   });
+
+  server.on('error', (err: any) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`\n[Server Error] Port ${PORT} is already in use by another process.`);
+      console.error(
+        `To release port ${PORT} on Windows, run:\n  Get-Process -Id (Get-NetTCPConnection -LocalPort ${PORT}).OwningProcess | Stop-Process -Force\n`,
+      );
+      process.exit(1);
+    } else {
+      console.error('[Server Error] Fatal error:', err);
+      process.exit(1);
+    }
+  });
+
+  const shutdown = () => {
+    server.close(() => {
+      process.exit(0);
+    });
+  };
+
+  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown);
 }
 
 startServer();

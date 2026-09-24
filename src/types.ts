@@ -47,6 +47,32 @@ export interface SpanHighlight {
   reason: string;
 }
 
+export type JudgeProvider = 'gemini' | 'qwen' | 'dual';
+
+export interface JudgeEvaluationData {
+  isLiveLLM?: boolean;
+  provider?: 'gemini' | 'qwen' | 'dual' | 'fallback';
+  modelUsed?: string;
+  groundednessScore?: number;
+  certaintyScore?: number;
+  certaintySupportMismatch?: number;
+  verdict: string;
+  reasoning: string;
+  triggeringSpans?: string[];
+  latencyMs?: number;
+  consensus?: 'AGREED' | 'DISAGREED';
+  consensusNote?: string;
+  scoreDeltas?: {
+    groundednessDelta: number;
+    certaintyDelta: number;
+    mismatchDelta: number;
+  };
+  dualResults?: {
+    gemini: JudgeEvaluationData;
+    local: JudgeEvaluationData;
+  };
+}
+
 export interface PerformanceLaneResult {
   lane: 'performance';
   groundedness_score: number; // 0.0 to 1.0 (1.0 = highly grounded)
@@ -58,15 +84,7 @@ export interface PerformanceLaneResult {
   risk_score: number; // 0.0 to 1.0 (1.0 = high risk)
   triggering_spans: SpanHighlight[];
   explanation: string;
-  judge_evaluation?: {
-    isLiveLLM: boolean;
-    groundednessScore: number;
-    certaintyScore: number;
-    certaintySupportMismatch: number;
-    verdict: string;
-    reasoning: string;
-    triggeringSpans: string[];
-  };
+  judge_evaluation?: JudgeEvaluationData;
 }
 
 export interface CostLaneResult {

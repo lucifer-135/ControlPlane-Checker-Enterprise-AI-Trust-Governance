@@ -14,6 +14,7 @@ import {
 import { VerdictBadge } from './VerdictBadge';
 import { WavyDots } from './WavyDots';
 import { GeminiJudgeResultCard } from './GeminiJudgeResultCard';
+import { GlassDropdown } from './GlassDropdown';
 import {
   Play,
   Pause,
@@ -32,16 +33,22 @@ import {
   Activity,
   TrendingDown,
   Loader2,
+  Cpu,
+  Scale,
 } from 'lucide-react';
+import type { JudgeProvider } from '../types';
 
 interface LiveFeedTabProps {
   interactions: SyntheticInteraction[];
   evaluations: Record<string, EvaluationResult>;
-  onRunJudge: (interaction: SyntheticInteraction) => Promise<any>;
+  onRunJudge: (interaction: SyntheticInteraction, provider?: JudgeProvider) => Promise<any>;
   activeUseCaseFilter: UseCaseId | 'ALL';
   setActiveUseCaseFilter: (u: UseCaseId | 'ALL') => void;
   streamTrigger?: number;
   onStreamTriggerHandled?: () => void;
+  judgeProvider?: JudgeProvider;
+  onSelectJudgeProvider?: (p: JudgeProvider) => void;
+  localLLMStatus?: { available: boolean; installed: boolean; model: string };
 }
 
 export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
@@ -52,6 +59,9 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
   setActiveUseCaseFilter,
   streamTrigger,
   onStreamTriggerHandled,
+  judgeProvider = 'gemini' as JudgeProvider,
+  onSelectJudgeProvider,
+  localLLMStatus,
 }) => {
   // Stream simulation states - only start from 1 if streamTrigger is explicitly active
   const [streamIndex, setStreamIndex] = useState<number>(
@@ -119,10 +129,14 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
 
   const isAllActive = streamIndex === interactions.length && !isPlaying;
 
-  const handleTriggerJudge = async (interaction: SyntheticInteraction) => {
+  const handleTriggerJudge = async (
+    interaction: SyntheticInteraction,
+    provider?: JudgeProvider,
+  ) => {
+    const targetProvider: JudgeProvider = provider || judgeProvider;
     setEvaluatingJudgeId(interaction.id);
     try {
-      const res = await onRunJudge(interaction);
+      const res = await onRunJudge(interaction, targetProvider);
       setJudgeResults((prev) => ({
         ...prev,
         [interaction.id]: res,
@@ -478,6 +492,62 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
           </div>
         </div>
 
+        {/* Adjudication Model Selector Bar */}
+        <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-2xl glass-inset border border-slate-200/80">
+          <div className="flex items-center space-x-2">
+            <span className="text-xs font-semibold text-[#101828] flex items-center gap-1.5">
+              <Scale className="h-3.5 w-3.5 text-[#4F46E5]" />
+              <span>Adjudication Model:</span>
+            </span>
+            {judgeProvider === 'qwen' && (
+              <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-cyan-50 text-[#0E7090] border border-cyan-200">
+                Zero Data Egress • Local Hardware
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-200/50 border border-slate-200/70 text-xs">
+            <button
+              type="button"
+              onClick={() => onSelectJudgeProvider?.('gemini')}
+              className={`group/gemini flex items-center space-x-1.5 px-3 py-1.5 rounded-lg transition-all duration-200 cursor-pointer font-medium hover:-translate-y-0.2 active:translate-y-0 ${
+                judgeProvider === 'gemini'
+                  ? 'bg-white text-[#4338CA] font-semibold shadow-xs'
+                  : 'text-[#475467] hover:text-[#101828] hover:bg-white/70'
+              }`}
+            >
+              <Sparkles className="h-3.5 w-3.5 text-[#4F46E5] transition-transform duration-200 group-hover/gemini:rotate-12 group-hover/gemini:scale-110" />
+              <span>Gemini 3.6</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => onSelectJudgeProvider?.('qwen')}
+              className={`group/qwen flex items-center space-x-1.5 px-3 py-1.5 rounded-lg transition-all duration-200 cursor-pointer font-medium hover:-translate-y-0.2 active:translate-y-0 ${
+                judgeProvider === 'qwen'
+                  ? 'bg-white text-[#0E7090] font-semibold shadow-xs'
+                  : 'text-[#475467] hover:text-[#101828] hover:bg-white/70'
+              }`}
+            >
+              <Cpu className="h-3.5 w-3.5 text-[#0891B2] transition-transform duration-200 group-hover/qwen:rotate-6 group-hover/qwen:scale-110" />
+              <span>Qwen 2.5: 7B (Local)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => onSelectJudgeProvider?.('dual')}
+              className={`group/dual flex items-center space-x-1.5 px-3 py-1.5 rounded-lg transition-all duration-200 cursor-pointer font-medium hover:-translate-y-0.2 active:translate-y-0 ${
+                judgeProvider === 'dual'
+                  ? 'bg-white text-[#6941C6] font-semibold shadow-xs'
+                  : 'text-[#475467] hover:text-[#101828] hover:bg-white/70'
+              }`}
+            >
+              <Scale className="h-3.5 w-3.5 text-[#7A5AF8] transition-transform duration-200 group-hover/dual:-rotate-12 group-hover/dual:scale-110" />
+              <span>Dual Consensus</span>
+            </button>
+          </div>
+        </div>
+
         {/* Filter Pills */}
         <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-slate-200 text-xs">
           {/* Use Case Tabs */}
@@ -550,18 +620,45 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
           <div className="h-4 w-px bg-white/60 mx-1 hidden md:block"></div>
 
           {/* Anomaly Category Filter */}
-          <select
+          <GlassDropdown
             value={anomalyFilter}
-            onChange={(e) => setAnomalyFilter(e.target.value)}
-            className="glass-input rounded-xl px-3 py-1 text-xs text-[#101828] cursor-pointer"
-          >
-            <option value="ALL">All Anomaly Types</option>
-            <option value="OVERLAP">Multi-Lane Overlaps Only</option>
-            <option value="CONFIDENTLY_WRONG">Confidently Wrong (Performance)</option>
-            <option value="PII">PII Leaks (Responsibility)</option>
-            <option value="COST">Cost/Token Outliers</option>
-            <option value="CLEAN">Clean Ground Truth</option>
-          </select>
+            onChange={(val) => setAnomalyFilter(val)}
+            size="sm"
+            align="right"
+            options={[
+              { value: 'ALL', label: 'All Anomaly Types' },
+              {
+                value: 'OVERLAP',
+                label: 'Multi-Lane Overlaps Only',
+                badge: 'Overlap',
+                badgeColor: 'bg-[#FFFAEB] text-[#B54708] border-[#FEDF89]',
+              },
+              {
+                value: 'CONFIDENTLY_WRONG',
+                label: 'Confidently Wrong (Performance)',
+                badge: 'Hallucination',
+                badgeColor: 'bg-[#FEF3F2] text-[#B42318] border-[#FECDCA]',
+              },
+              {
+                value: 'PII',
+                label: 'PII Leaks (Responsibility)',
+                badge: 'PII',
+                badgeColor: 'bg-[#F4F3FF] text-[#6941C6] border-[#D9D6FE]',
+              },
+              {
+                value: 'COST',
+                label: 'Cost/Token Outliers',
+                badge: 'Cost',
+                badgeColor: 'bg-[#FFFAEB] text-[#B54708] border-[#FEDF89]',
+              },
+              {
+                value: 'CLEAN',
+                label: 'Clean Ground Truth',
+                badge: 'Clean',
+                badgeColor: 'bg-[#ECFDF3] text-[#067647] border-[#ABEFC6]',
+              },
+            ]}
+          />
         </div>
       </div>
 
@@ -712,12 +809,25 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
                     <VerdictBadge verdict={evalRes.verdict} size="sm" />
 
                     {/* Expand Toggle */}
-                    <button className="text-[#98A2B3] hover:text-[#101828] p-1.5 rounded-lg hover:bg-white/60 transition-colors">
-                      {isExpanded ? (
-                        <ChevronUp className="h-4 w-4" />
-                      ) : (
-                        <ChevronDown className="h-4 w-4" />
-                      )}
+                    <button
+                      type="button"
+                      className={`p-1.5 rounded-xl border transition-all duration-200 cursor-pointer ${
+                        isExpanded
+                          ? 'bg-[#EEF0FE] text-[#4F46E5] border-[#D9D6FE] shadow-2xs'
+                          : 'bg-white/70 hover:bg-white text-[#98A2B3] hover:text-[#101828] border-slate-200/80 hover:border-slate-300 shadow-2xs'
+                      }`}
+                      title={
+                        isExpanded ? 'Collapse interaction details' : 'Expand interaction details'
+                      }
+                      aria-label={
+                        isExpanded ? 'Collapse interaction details' : 'Expand interaction details'
+                      }
+                    >
+                      <ChevronDown
+                        className={`h-4 w-4 transition-transform duration-200 ${
+                          isExpanded ? 'rotate-180 text-[#4F46E5]' : 'text-[#667085]'
+                        }`}
+                      />
                     </button>
                   </div>
                 </div>
@@ -973,24 +1083,90 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
                         </div>
                       </div>
 
-                      {/* Trigger LLM Judge Button */}
-                      <button
-                        onClick={() => handleTriggerJudge(item)}
-                        disabled={evaluatingJudgeId === item.id}
-                        className="inline-flex items-center space-x-2 px-5 py-2 rounded-xl text-xs font-medium glass-btn-primary text-white disabled:opacity-50 transition-all cursor-pointer"
-                      >
-                        <Sparkles className="h-3.5 w-3.5" />
-                        <span>
-                          {evaluatingJudgeId === item.id
-                            ? 'Evaluating with Gemini'
-                            : judgeData
-                              ? 'Re-evaluate with Judge'
-                              : 'Run Live Gemini Judge Tiebreaker'}
-                        </span>
-                        {evaluatingJudgeId === item.id && (
-                          <WavyDots color="bg-white" size="xs" className="ml-1" />
-                        )}
-                      </button>
+                      {/* Adjudication Model Options & Execute Button */}
+                      <div className="flex flex-wrap items-center gap-2.5">
+                        <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-200/50 border border-slate-200/70 text-xs">
+                          <button
+                            type="button"
+                            onClick={() => onSelectJudgeProvider?.('gemini')}
+                            className={`group/gemini flex items-center space-x-1 px-2.5 py-1 rounded-lg transition-all duration-200 cursor-pointer font-medium hover:-translate-y-0.2 active:translate-y-0 ${
+                              judgeProvider === 'gemini'
+                                ? 'bg-white text-[#4338CA] font-semibold shadow-xs'
+                                : 'text-[#475467] hover:text-[#101828] hover:bg-white/70'
+                            }`}
+                          >
+                            <Sparkles className="h-3 w-3 text-[#4F46E5] transition-transform duration-200 group-hover/gemini:rotate-12 group-hover/gemini:scale-110" />
+                            <span>Gemini 3.6</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => onSelectJudgeProvider?.('qwen')}
+                            className={`group/qwen flex items-center space-x-1 px-2.5 py-1 rounded-lg transition-all duration-200 cursor-pointer font-medium hover:-translate-y-0.2 active:translate-y-0 ${
+                              judgeProvider === 'qwen'
+                                ? 'bg-white text-[#0E7090] font-semibold shadow-xs'
+                                : 'text-[#475467] hover:text-[#101828] hover:bg-white/70'
+                            }`}
+                          >
+                            <Cpu className="h-3 w-3 text-[#0891B2] transition-transform duration-200 group-hover/qwen:rotate-6 group-hover/qwen:scale-110" />
+                            <span>Qwen 2.5: 7B (Local)</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => onSelectJudgeProvider?.('dual')}
+                            className={`group/dual flex items-center space-x-1 px-2.5 py-1 rounded-lg transition-all duration-200 cursor-pointer font-medium hover:-translate-y-0.2 active:translate-y-0 ${
+                              judgeProvider === 'dual'
+                                ? 'bg-white text-[#6941C6] font-semibold shadow-xs'
+                                : 'text-[#475467] hover:text-[#101828] hover:bg-white/70'
+                            }`}
+                          >
+                            <Scale className="h-3 w-3 text-[#7A5AF8] transition-transform duration-200 group-hover/dual:-rotate-12 group-hover/dual:scale-110" />
+                            <span>Dual Consensus</span>
+                          </button>
+                        </div>
+
+                        <button
+                          onClick={() => handleTriggerJudge(item)}
+                          disabled={evaluatingJudgeId === item.id}
+                          className={`group/judge relative overflow-hidden inline-flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 cursor-pointer hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] ${
+                            judgeProvider === 'qwen'
+                              ? 'bg-gradient-to-r from-teal-600 via-teal-500 to-cyan-600 hover:from-teal-500 hover:to-cyan-500 border border-teal-400/40 shadow-xs hover:shadow-[0_8px_25px_-4px_rgba(13,148,136,0.5),0_4px_10px_-2px_rgba(6,182,212,0.3)]'
+                              : judgeProvider === 'dual'
+                                ? 'bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600 hover:from-indigo-500 hover:to-purple-500 border border-indigo-400/40 shadow-xs hover:shadow-[0_8px_25px_-4px_rgba(124,58,237,0.5),0_4px_10px_-2px_rgba(99,102,241,0.3)]'
+                                : 'bg-gradient-to-r from-[#4F46E5] to-[#4338CA] hover:from-[#4338CA] hover:to-[#3730A3] border border-indigo-400/30 shadow-xs hover:shadow-[0_8px_25px_-4px_rgba(79,70,229,0.5),0_4px_10px_-2px_rgba(79,70,229,0.3)]'
+                          }`}
+                        >
+                          {/* Shimmer sweep animation across the button on hover */}
+                          <span className="absolute inset-0 -translate-x-full group-hover/judge:translate-x-full transition-transform duration-700 ease-in-out bg-gradient-to-r from-transparent via-white/25 to-transparent pointer-events-none" />
+
+                          {judgeProvider === 'qwen' ? (
+                            <Cpu className="h-3.5 w-3.5 text-cyan-200 transition-transform duration-300 group-hover/judge:scale-125 group-hover/judge:rotate-6 group-hover/judge:text-cyan-100 shrink-0" />
+                          ) : judgeProvider === 'dual' ? (
+                            <Scale className="h-3.5 w-3.5 text-purple-200 transition-transform duration-300 group-hover/judge:scale-125 group-hover/judge:-rotate-12 group-hover/judge:text-purple-100 shrink-0" />
+                          ) : (
+                            <Sparkles className="h-3.5 w-3.5 text-indigo-200 transition-transform duration-300 group-hover/judge:rotate-12 group-hover/judge:scale-125 group-hover/judge:text-amber-200 shrink-0" />
+                          )}
+                          <span className="relative z-10 font-semibold tracking-normal transition-all duration-200 group-hover/judge:tracking-tight">
+                            {evaluatingJudgeId === item.id
+                              ? judgeProvider === 'qwen'
+                                ? 'Evaluating with Local Qwen...'
+                                : judgeProvider === 'dual'
+                                  ? 'Running Dual Consensus...'
+                                  : 'Evaluating with Gemini...'
+                              : judgeData
+                                ? 'Re-evaluate with Judge'
+                                : judgeProvider === 'qwen'
+                                  ? 'Run Local Qwen 2.5: 7B Judge'
+                                  : judgeProvider === 'dual'
+                                    ? 'Run Dual Judge Consensus'
+                                    : 'Run Live Gemini Judge Tiebreaker'}
+                          </span>
+                          {evaluatingJudgeId === item.id && (
+                            <WavyDots color="bg-white" size="xs" className="ml-1 relative z-10" />
+                          )}
+                        </button>
+                      </div>
                     </div>
 
                     {/* Live Judge Results Display */}

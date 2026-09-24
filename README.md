@@ -1,6 +1,6 @@
 # ControlPlane Checker
 
-ControlPlane Checker is an enterprise-grade AI trust, governance, and real-time observability control plane. It functions as both an inline reverse-proxy gateway (`/v1/chat/completions`) and sidecar inspection plane that intercepts prompts, retrieved context, and generated completions. The engine scores interactions across **Performance**, **Cost**, and **Responsibility** in real-time, enforcing granular policy tiers (`ALLOW`, `BADGE`, `SOFT_CORRECT`, `BLOCK_ESCALATE`) with autonomous Gemini LLM Judge arbitration, streaming Server-Sent Events (SSE) token interception, cryptographic tamper-evident audit chaining, and GitOps YAML policy management.
+ControlPlane Checker is an enterprise-grade AI trust, governance, and real-time observability control plane. It functions as both an inline reverse-proxy gateway (`/v1/chat/completions`) and sidecar inspection plane that intercepts prompts, retrieved context, and generated completions. The engine scores interactions across **Performance**, **Cost**, and **Responsibility** in real-time, enforcing granular policy tiers (`ALLOW`, `BADGE`, `SOFT_CORRECT`, `BLOCK_ESCALATE`) with a **Multi-Provider LLM Judge Engine** (Google Gemini Cloud, Local Sovereign Qwen 2.5: 7B via Ollama for zero data egress, and Dual Judge Consensus), streaming Server-Sent Events (SSE) token interception, cryptographic tamper-evident audit chaining, and GitOps YAML policy management.
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![React](https://img.shields.io/badge/React-19.0-61DAFB?logo=react&logoColor=black)](https://react.dev/)
@@ -10,8 +10,9 @@ ControlPlane Checker is an enterprise-grade AI trust, governance, and real-time 
 [![Express](https://img.shields.io/badge/Express-4.21-000000?logo=express&logoColor=white)](https://expressjs.com/)
 [![SQLite](https://img.shields.io/badge/SQLite-WAL_Mode-003B57?logo=sqlite&logoColor=white)](https://www.sqlite.org/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
-[![Vitest](https://img.shields.io/badge/Tests-75_Passing-6E9F18?logo=vitest&logoColor=white)](https://vitest.dev/)
-[![Google Gemini API](https://img.shields.io/badge/Google_Gemini-3.6_Flash-8E75B2?logo=google&logoColor=white)](https://ai.google.dev/)
+[![Vitest](https://img.shields.io/badge/Tests-92_Passing-6E9F18?logo=vitest&logoColor=white)](https://vitest.dev/)
+[![Google Gemini API](https://img.shields.io/badge/Google_Gemini-3.6%20%2F%203.8%20Flash-8E75B2?logo=google&logoColor=white)](https://ai.google.dev/)
+[![Ollama Qwen 2.5](https://img.shields.io/badge/Ollama-Qwen_2.5_7B-000000?logo=ollama&logoColor=white)](https://ollama.com/)
 
 For full source code and documentation, visit the [GitHub repository](https://github.com/lucifer-135/ControlPlane-Checker-Enterprise-AI-Trust-Governance).
 
@@ -29,6 +30,7 @@ Submit bug reports, feature suggestions, or track changes in the [issue queue](h
 - [Automated test suite](#automated-test-suite)
 - [Solution architecture](#solution-architecture)
 - [The three governance lanes](#the-three-governance-lanes)
+- [Multi-provider LLM judge engine](#multi-provider-llm-judge-engine)
 - [AI governance gateway & stream interception](#ai-governance-gateway--stream-interception)
 - [Cryptographic audit chain & tamper verification](#cryptographic-audit-chain--tamper-verification)
 - [GitOps YAML policy engine](#gitops-yaml-policy-engine)
@@ -53,7 +55,7 @@ Enterprises deploying Generative AI models into mission-critical workflows face 
 4. **Session Drift**: Compounding risk across multi-turn sessions where isolated turns seem harmless but cumulative interactions breach policy boundaries.
 5. **Adversarial Injections & Tampering**: Prompt injection, jailbreaking, and untracked triage decisions without verifiable audit trails.
 
-**ControlPlane Checker** addresses these vulnerabilities with an inline proxy gateway and real-time observability control plane. It evaluates inputs via deterministic sub-millisecond heuristics, maintains cryptographic SHA-256 HMAC audit chains in SQLite, dynamically escalates borderline grounding to a live **Gemini 3.6 Flash LLM Judge**, and intercepts token streams in flight.
+**ControlPlane Checker** addresses these vulnerabilities with an inline proxy gateway and real-time observability control plane. It evaluates inputs via deterministic sub-millisecond heuristics, maintains cryptographic SHA-256 HMAC audit chains in SQLite, dynamically escalates borderline grounding to a **Multi-Provider LLM Judge** (Google Gemini Cloud, Local Sovereign Qwen 2.5: 7B via Ollama, or Dual Judge Consensus), and intercepts token streams in flight.
 
 ## Requirements
 
@@ -61,10 +63,12 @@ Enterprises deploying Generative AI models into mission-critical workflows face 
 - **Package Manager**: [npm](https://www.npmjs.com/) (bundled with Node.js) or [bun](https://bun.sh/)
 - **C/C++ Build Tools**: Required for native `better-sqlite3` compilation (`make`, `g++`, or Visual Studio Build Tools on Windows)
 - **Docker & Docker Compose** (Optional): For containerized deployments
+- **Ollama** (Optional): For running the local sovereign LLM Judge (`qwen2.5:7b`) with zero external data egress
 
 ## Recommended tools
 
-- **[Google AI Studio Gemini API Key](https://aistudio.google.com/app/apikey)**: Recommended for live, autonomous LLM Judge arbitration and deep semantic evaluation. If omitted, the system operates seamlessly using deterministic local heuristics.
+- **[Google AI Studio Gemini API Key](https://aistudio.google.com/app/apikey)**: Recommended for cloud LLM Judge arbitration. If omitted, the system operates seamlessly using local sovereign Ollama models or deterministic heuristics.
+- **[Ollama](https://ollama.com/)**: Enables zero-egress local sovereign evaluation using open weights (`ollama run qwen2.5:7b`).
 - **[Docker Desktop](https://www.docker.com/products/docker-desktop/)**: For single-command isolated container deployment.
 
 ## Installation
@@ -72,8 +76,8 @@ Enterprises deploying Generative AI models into mission-critical workflows face 
 1. Clone the repository:
 
    ```bash
-   git clone https://github.com/lucifer-135/ControlPlane-Checker.git
-   cd ControlPlane-Checker
+   git clone https://github.com/lucifer-135/ControlPlane-Checker-Enterprise-AI-Trust-Governance.git
+   cd ControlPlane-Checker-Enterprise-AI-Trust-Governance
    ```
 
 2. Install dependencies:
@@ -89,24 +93,28 @@ Enterprises deploying Generative AI models into mission-critical workflows face 
    cp .env.example .env
    ```
 
-2. Edit `.env` to configure your server parameters and API credentials:
+2. Edit `.env` to configure your server parameters, LLM judge options, and API credentials:
 
    ```env
-   # Google Gemini API key for live LLM Judge features (optional)
+   # Google Gemini API key for cloud LLM Judge features (optional)
    GEMINI_API_KEY="your_gemini_api_key_here"
 
-   # Upstream LLM providers for the Governance Gateway (optional)
-   OPENAI_API_KEY=""
-   ANTHROPIC_API_KEY=""
+   # Primary production Gemini model
+   GEMINI_MODEL="gemini-3.6-flash"
+
+   # Local sovereign LLM Judge (Ollama - Zero Data Egress)
+   OLLAMA_BASE_URL="http://localhost:11434"
+   LOCAL_JUDGE_MODEL="qwen2.5:7b"
+   OLLAMA_TIMEOUT_MS=120000
 
    # Server port (default: 3000)
    PORT=3000
 
-   # Cryptographic secret for audit log HMAC chaining
-   AUDIT_HMAC_SECRET="controlplane-enterprise-audit-secret-2026"
-
-   # Node environment
+   # Node environment ('development' | 'production')
    NODE_ENV=development
+
+   # Base URL
+   APP_URL="http://localhost:3000"
    ```
 
 3. **Policy Profiles**: Policies are stored as human-readable YAML documents in [`./policies/`](policies/) (`customer-support.yaml`, `decision-support.yaml`, `internal-copilot.yaml`). Modifications are hot-reloaded live without server restarts.
@@ -143,7 +151,7 @@ http://localhost:3000
 ### Additional commands
 
 - `npm run lint`: Static TypeScript type checking via `tsc --noEmit`.
-- `npm run test`: Executes the complete Vitest test suite.
+- `npm run test`: Executes the complete Vitest test suite (92 tests passing).
 - `npm run test:coverage`: Generates test coverage reports with v8.
 - `npm run format`: Formats codebase with Prettier.
 - `npm run clean`: Cleans generated build artifacts in `dist/`.
@@ -172,28 +180,30 @@ The container automatically mounts:
 
 ## Automated test suite
 
-The platform includes a test suite covering the three governance lanes, cryptographic audit chains, SQLite persistence, SSE stream interception, circuit breaking, input guards, and Luhn checksum validation.
+The platform includes a comprehensive test suite covering the three governance lanes, cryptographic audit chains, SQLite persistence, SSE stream interception, circuit breaking, input guards, Luhn checksum validation, gateway model fallbacks, and multi-provider LLM judge consensus.
 
 ```bash
 # Run unit and integration tests
 npm run test
 ```
 
-### Test coverage areas
+### Test coverage areas (92 Passing Tests)
 
-| Test Suite              | File                                       | Tests | Coverage                                                    |
-| :---------------------- | :----------------------------------------- | :---: | :---------------------------------------------------------- |
-| **Input Guard**         | `src/server/inputGuard.test.ts`            |   7   | Jailbreaks, prompt injection, system prompt leak detection  |
-| **Luhn Checksum**       | `src/lib/utils/luhn.test.ts`               |  15   | Credit card checksum validation, false positive suppression |
-| **Audit Chain**         | `src/server/db/auditChain.test.ts`         |   4   | SHA-256 HMAC tamper detection, integrity verification       |
-| **Database Adapter**    | `src/server/db/database.test.ts`           |   4   | SQLite persistence, review decisions, tenant API keys       |
-| **Policy Loader**       | `src/server/policyLoader.test.ts`          |   3   | YAML parsing, schema validation, fallback defaults          |
-| **Rolling Baselines**   | `src/server/rollingBaseline.test.ts`       |   3   | Welford algorithm streaming mean & standard deviation       |
-| **Performance Lane**    | `src/lib/lanes/performanceLane.test.ts`    |   8   | Grounding score, Certainty-Support Mismatch, CW detection   |
-| **Responsibility Lane** | `src/lib/lanes/responsibilityLane.test.ts` |  15   | SSN, email, phone, credit card, bias, regulatory rulesets   |
-| **Stream Interceptor**  | `src/server/streamInterceptor.test.ts`     |   2   | Real-time SSE token interception, emergency hard cutoff     |
-| **Circuit Breaker**     | `src/server/circuitBreaker.test.ts`        |   6   | Open/half-open/closed state transitions, cooldown timers    |
-| **Decision Engine**     | `src/lib/decisionEngine.test.ts`           |   8   | Composite scoring, multi-lane overlaps, session decay       |
+| Test Suite              | File                                       | Tests | Coverage                                                         |
+| :---------------------- | :----------------------------------------- | :---: | :--------------------------------------------------------------- |
+| **LLM Judge Engine**    | `src/server/judge.test.ts`                 |   9   | Gemini backoff/jitter, local Qwen, dual consensus, normalization |
+| **Gateway Proxy**       | `src/server/gateway.test.ts`               |   8   | Model fallback, 503 backoff, PII redact/block, input guard       |
+| **Responsibility Lane** | `src/lib/lanes/responsibilityLane.test.ts` |  15   | SSN, email, phone, credit card, bias, regulatory rulesets        |
+| **Luhn Checksum**       | `src/lib/utils/luhn.test.ts`               |  15   | Credit card checksum validation, false positive suppression      |
+| **Performance Lane**    | `src/lib/lanes/performanceLane.test.ts`    |   8   | Grounding score, Certainty-Support Mismatch, CW detection        |
+| **Decision Engine**     | `src/lib/decisionEngine.test.ts`           |   8   | Composite scoring, multi-lane overlaps, session decay            |
+| **Input Guard**         | `src/server/inputGuard.test.ts`            |   7   | Jailbreaks, prompt injection, system prompt leak detection       |
+| **Circuit Breaker**     | `src/server/circuitBreaker.test.ts`        |   6   | Open/half-open/closed state transitions, cooldown timers         |
+| **Database Adapter**    | `src/server/db/database.test.ts`           |   4   | SQLite persistence, review decisions, tenant API keys            |
+| **Audit Chain**         | `src/server/db/auditChain.test.ts`         |   4   | SHA-256 HMAC tamper detection, integrity verification            |
+| **Rolling Baselines**   | `src/server/rollingBaseline.test.ts`       |   3   | Welford algorithm streaming mean & standard deviation            |
+| **Policy Loader**       | `src/server/policyLoader.test.ts`          |   3   | YAML parsing, schema validation, fallback defaults               |
+| **Stream Interceptor**  | `src/server/streamInterceptor.test.ts`     |   2   | Real-time SSE token interception, emergency hard cutoff          |
 
 ## Solution architecture
 
@@ -206,13 +216,13 @@ flowchart TD
 
     subgraph GatewayLayer["2. AI Governance Gateway (/v1/chat/completions)"]
         AuthCheck["API Key & Tenant Auth\n(SHA-256 hashed keys)"]
-        InputGuard["Pre-Execution Input Guard\n(Injection / Jailbreak / Toxicity)"]
-        CircuitBreaker["Circuit Breaker & Retry State\n(Provider fail-safe protection)"]
+        InputGuard["Pre-Execution Input Guard\n(Injection / Jailbreak / Toxicity / PII)"]
+        CircuitBreaker["Circuit Breaker & Retry State\n(Provider fail-safe & auto-fallback)"]
     end
 
     subgraph UpstreamLLM["3. Upstream LLM Execution"]
         LLMProvider["LLM Provider\n(OpenAI / Gemini / Anthropic / Local)"]
-        StreamEngine["Streaming SSE Interceptor\n(Chunk buffer & regex scanning)"]
+        StreamEngine["Streaming SSE Interceptor\n(Chunk buffer & emergency regex cutoff)"]
     end
 
     subgraph GovernanceEngine["4. Three-Lane Decision Engine"]
@@ -222,10 +232,13 @@ flowchart TD
         L3["<b>Lane 3: Responsibility</b><br/>• Regulatory (EU, HIPAA, DPDP)<br/>• Luhn-Validated PII Scanner<br/>• Bias & Toxicity Flags"]
     end
 
-    subgraph Arbiter["5. Session Compounding & LLM Judge"]
+    subgraph Arbiter["5. Session Compounding & Multi-Provider LLM Judge"]
         Accumulator["Session Risk Accumulator (Decay = 0.45)"]
-        JudgeTrigger{"Ambiguous Grounding?"}
-        GeminiFlash["Gemini 3.6 Flash Judge\n(Deep semantic arbitration)"]
+        JudgeTrigger{"Grounding Ambiguous / HITL?"}
+        JudgeRouter{"Judge Provider Router"}
+        GeminiFlash["Google Gemini Cloud\n(Jitter, Backoff & Model Tiering)"]
+        LocalQwen["Qwen 2.5: 7B (Ollama)\n(Local Sovereign - Zero Data Egress)"]
+        DualConsensus["Dual Judge Consensus Engine\n(Consensus Agreement & Delta Scoring)"]
     end
 
     subgraph EnactmentStorage["6. Policy Enactment & Cryptographic Storage"]
@@ -247,8 +260,13 @@ flowchart TD
     L2 --> Accumulator
     L3 --> Accumulator
     Accumulator --> JudgeTrigger
-    JudgeTrigger -- Yes --> GeminiFlash
+    JudgeTrigger -- Yes --> JudgeRouter
+    JudgeRouter --> GeminiFlash
+    JudgeRouter --> LocalQwen
+    JudgeRouter --> DualConsensus
     GeminiFlash --> PolicyRouter
+    LocalQwen --> PolicyRouter
+    DualConsensus --> PolicyRouter
     JudgeTrigger -- No --> PolicyRouter
 
     PolicyRouter --> Tiers
@@ -262,7 +280,7 @@ flowchart TD
 
 - **N-Gram & Jaccard Grounding**: Computes token-level and phrase-level overlap against retrieved RAG documents.
 - **Certainty vs. Support Mismatch**: Identifies linguistic assertiveness (_"guaranteed"_, _"without question"_, _"strictly mandates"_) unsupported by reference context, flagging `"Confidently Wrong"` hallucinations.
-- **LLM Judge Arbitration**: Automatically hands off ambiguous cases (grounding scores between 0.35–0.60) to Gemini Flash for deep semantic verification.
+- **Multi-Provider LLM Judge Arbitration**: Automatically hands off ambiguous cases (grounding scores between 0.35–0.60) or on-demand triage to Gemini, local Qwen, or dual consensus.
 
 ### 2. Cost & Operational Reliability Lane
 
@@ -280,6 +298,36 @@ flowchart TD
   - **India DPDP Act**: Digital personal data protection, Aadhaar masking.
 - **Hard Governance Overrides**: Critical violations (exposed SSN, active credit card, hate speech) trigger immediate `BLOCK_ESCALATE` regardless of other lane scores.
 
+## Multi-provider LLM judge engine
+
+ControlPlane Checker features an advanced, multi-tier LLM Judge architecture providing flexible arbitration across cloud, sovereign on-premise, and dual-consensus topologies:
+
+### 1. Google Gemini Cloud Judge
+
+- **Stable Model Tiering**: Automatically cycles through production models (`gemini-flash-lite-latest`, `gemini-3.5-flash-lite`, `gemini-3.8-flash`, `gemini-3.6-flash`, `gemini-flash-latest`) without experimental preview throttling.
+- **Exponential Backoff with Randomized Jitter**: Mitigates 429 rate limits and 503 capacity spikes (`delay = min(base * 2^attempt, max) + jitter`).
+- **Structured Schema Enforcement**: Forces JSON response schemas for groundedness, certainty, and specific triggering span extraction.
+
+### 2. Local Sovereign LLM Judge (Qwen 2.5: 7B via Ollama)
+
+- **Zero Data Egress**: Fully on-premises execution via local Ollama instance (`http://localhost:11434`) for classified, air-gapped, or regulated environments.
+- **VRAM Cold-Start Handling**: Configured with extended timeout (`OLLAMA_TIMEOUT_MS=120000`) and 30-minute VRAM residency (`keep_alive: '30m'`).
+- **Automatic Health & Model Probing**: `/api/health` probes local Ollama status, reachability, and installed model tags.
+
+### 3. Dual Judge Consensus Engine
+
+- **Parallel Adjudication**: Executes both Gemini Cloud and Local Qwen simultaneously.
+- **Consensus & Discrepancy Detection**: Compares verdicts (`AGREED` vs `DISAGREED`) and computes mathematical score deltas:
+  - $\Delta_{\text{groundedness}} = |\text{Score}_{\text{Gemini}} - \text{Score}_{\text{Qwen}}|$
+  - $\Delta_{\text{certainty}} = |\text{Score}_{\text{Gemini}} - \text{Score}_{\text{Qwen}}|$
+  - $\Delta_{\text{mismatch}} = |\text{Score}_{\text{Gemini}} - \text{Score}_{\text{Qwen}}|$
+- **Conservative Safety Override**: If models disagree on verdict, the platform automatically enacts the more protective risk tier (`CONFIDENTLY_WRONG` > `UNSUPPORTED` > `AMBIGUOUS` > `SUPPORTED`).
+- **Triggering Span Union**: Merges extracted problematic claim spans across both models.
+
+### 4. Deterministic Autonomous Fallback
+
+- If neither cloud nor local LLM endpoints are reachable, the engine uses local semantic n-gram overlap, lexical contradiction detection, and certainty bounds heuristics to return complete verdicts without failing requests.
+
 ## AI governance gateway & stream interception
 
 ControlPlane Checker provides an OpenAI-compatible reverse-proxy endpoint at `/v1/chat/completions`:
@@ -287,7 +335,13 @@ ControlPlane Checker provides an OpenAI-compatible reverse-proxy endpoint at `/v
 - **Drop-in Client Compatibility**: Works out of the box with standard `openai-python`, `openai-node`, LangChain, and LlamaIndex configurations.
 - **Pre-Execution Input Guard**: Analyzes prompts before reaching the model to block prompt injections, jailbreaks, and sensitive data uploads.
 - **Real-Time Streaming SSE Interceptor**: Inspects Server-Sent Events token streams chunk-by-chunk. If a hard violation appears mid-stream (such as an unmasked Social Security Number or credit card), the proxy immediately truncates the stream, appends an emergency governance disclaimer, and logs the incident.
-- **Circuit Breaker**: Detects downstream provider failures and opens the circuit after consecutive errors, serving graceful fallbacks and automatically probing for recovery.
+- **Multi-Model Upstream Fallback**: Automatically tries candidate models with exponential backoff on 503/429 upstream errors.
+- **Governance Headers**: Injects telemetry headers into every response:
+  - `X-ControlPlane-Verdict`: Active policy enactment (`ALLOW`, `BADGE`, `SOFT_CORRECT`, `BLOCK_ESCALATE`).
+  - `X-ControlPlane-Risk-Score`: Normalized composite risk (0.00 - 1.00).
+  - `X-ControlPlane-Session-Risk`: Compounded multi-turn risk.
+  - `X-ControlPlane-Policy-Version`: Active GitOps YAML policy version.
+  - `X-ControlPlane-Latency-Ms`: Added governance overhead.
 
 ## Cryptographic audit chain & tamper verification
 
@@ -337,26 +391,29 @@ rules:
 
 ## REST API reference
 
-| Endpoint                    |  Method  | Description                                                        |
-| :-------------------------- | :------: | :----------------------------------------------------------------- |
-| `/v1/chat/completions`      |  `POST`  | OpenAI-compatible reverse proxy with streaming SSE interception    |
-| `/api/evaluate`             |  `POST`  | Evaluates a single interaction across all three governance lanes   |
-| `/api/evaluate/batch`       |  `POST`  | Batch evaluation of dataset against active policy profiles         |
-| `/api/policies`             |  `GET`   | Retrieves all active YAML policy profiles                          |
-| `/api/policies/:useCase`    |  `PUT`   | Updates a specific policy profile at runtime                       |
-| `/api/policies/reset`       |  `POST`  | Resets policy profiles to YAML baseline configurations             |
-| `/api/baselines`            |  `GET`   | Retrieves current Welford empirical distributions ($\mu, \sigma$)  |
-| `/api/baselines/observe`    |  `POST`  | Feeds a new token/latency observation into the Welford accumulator |
-| `/api/audit-logs`           |  `GET`   | Retrieves paginated audit trail records                            |
-| `/api/audit-logs/verify`    |  `GET`   | Verifies cryptographic HMAC-SHA256 chain integrity                 |
-| `/api/review-decisions`     |  `GET`   | Queries persisted Human-in-the-Lead review decisions               |
-| `/api/review-decisions`     |  `POST`  | Persists an HITL triage decision to SQLite                         |
-| `/api/review-decisions/:id` | `DELETE` | Deletes a specific review decision and returns item to queue       |
-| `/api/review-decisions`     | `DELETE` | Resets / clears all recorded review decisions                      |
-| `/api/keys`                 |  `POST`  | Generates a new tenant API key with rate limits                    |
-| `/api/metrics`              |  `GET`   | Exports Prometheus metrics text format                             |
-| `/api/judge`                |  `POST`  | Invokes Gemini 3.6 Flash LLM Judge for semantic arbitration        |
-| `/api/health`               |  `GET`   | Server health check and API key readiness status                   |
+| Endpoint                    |  Method  | Description                                                                      |
+| :-------------------------- | :------: | :------------------------------------------------------------------------------- |
+| `/v1/chat/completions`      |  `POST`  | OpenAI-compatible reverse proxy with model fallback & streaming SSE interception |
+| `/api/evaluate`             |  `POST`  | Evaluates a single interaction across all three governance lanes                 |
+| `/api/evaluate/batch`       |  `POST`  | Batch evaluation of dataset against active policy profiles                       |
+| `/api/judge`                |  `POST`  | LLM Judge arbitration: Gemini, Local Sovereign Qwen, or Dual Consensus           |
+| `/api/input-guard`          |  `POST`  | Pre-execution scan for prompt injections, jailbreaks, and PII leaks              |
+| `/api/rate-limit/simulate`  |  `POST`  | Simulates request bursts against sliding-window rate limiters                    |
+| `/api/rate-limit/reset`     |  `POST`  | Resets rate limit windows for a given API key                                    |
+| `/api/policies`             |  `GET`   | Retrieves all active YAML policy profiles                                        |
+| `/api/policies/:useCase`    |  `PUT`   | Updates a specific policy profile at runtime                                     |
+| `/api/policies/reset`       |  `POST`  | Resets policy profiles to YAML baseline configurations                           |
+| `/api/baselines`            |  `GET`   | Retrieves current Welford empirical distributions ($\mu, \sigma$)                |
+| `/api/baselines/observe`    |  `POST`  | Feeds a new token/latency observation into the Welford accumulator               |
+| `/api/audit-logs`           |  `GET`   | Retrieves paginated audit trail records                                          |
+| `/api/audit-logs/verify`    |  `GET`   | Verifies cryptographic HMAC-SHA256 chain integrity                               |
+| `/api/review-decisions`     |  `GET`   | Queries persisted Human-in-the-Lead review decisions                             |
+| `/api/review-decisions`     |  `POST`  | Persists an HITL triage decision to SQLite                                       |
+| `/api/review-decisions/:id` | `DELETE` | Deletes a specific review decision and returns item to queue                     |
+| `/api/review-decisions`     | `DELETE` | Resets / clears all recorded review decisions                                    |
+| `/api/keys`                 |  `POST`  | Generates a new tenant API key with rate limits                                  |
+| `/api/metrics`              |  `GET`   | Exports Prometheus metrics text format                                           |
+| `/api/health`               |  `GET`   | Server health check, Gemini key readiness, and Local Ollama status & models      |
 
 ## Key platform features
 
@@ -370,56 +427,61 @@ rules:
 
 - Real-time simulation of incoming enterprise AI interactions across Customer Support, Internal Copilots, and Decision Support agents.
 - Playback controls: Play/Pause, Step forward 1 interaction, 1x/2x/5x speed selectors, and instant stream rendering.
-- Telemetry inspection view with token breakdown, latency gauges, triggering span highlights, and 1-click **Gemini LLM Judge** execution.
+- Telemetry inspection view with token breakdown, latency gauges, triggering span highlights, and 1-click **Multi-Provider LLM Judge** execution.
 
 ### 3. Frontline Human Review Queue
 
 - Human-in-the-Lead (HITL) adjudication portal for blocked or escalated interactions.
 - Side-by-side prompt, retrieved context, and model output view with colored span highlights.
-- 1-click arbitration actions: **Approve & Release**, **Overturn & Correct**, **Escalate to Legal/Security**, or **Trigger Gemini LLM Judge**.
+- 1-click arbitration actions: **Approve & Release**, **Overturn & Correct**, **Escalate to Legal/Security**, or **Trigger Gemini / Qwen / Dual Judge**.
 - Adjudications are persisted directly to SQLite with automated session audit logging.
 - **Delete / Reset Recorded Decisions**: Individual decisions can be deleted to return specific interactions back to the active review queue, or reset completely in bulk with confirmation to clear the session review state.
 
-### 4. Policy Studio
+### 4. Interactive Sandbox Lab
+
+- Live testing harness to input custom prompts, retrieved contexts, and candidate responses.
+- Evaluates inputs in real-time across all three lanes.
+- On-demand **Multi-Provider Judge**: switch between Google Gemini Cloud, Local Sovereign Qwen 2.5: 7B via Ollama, or Dual Judge Consensus.
+- Real-time Ollama status indicator with model detection and connectivity alerts.
+
+### 5. Policy Studio
 
 - Tailor governance parameters per use-case (`support_bot`, `internal_copilot`, `decision_support`).
 - Configure lane weights (Performance vs. Cost vs. Responsibility), trigger thresholds, and regulatory regimes (EU AI Act, HIPAA/FINRA, DPDP).
 - Real-time synchronization with server-side YAML policies.
 
-### 5. Trust Metrics & Tradeoff Dial
+### 6. Trust Metrics & Tradeoff Dial
 
 - Interactive Confusion Matrix calculating True Positives, False Positives, True Negatives, and False Negatives against labeled ground truth.
 - Precision-Recall Curve and False Positive Rate (FPR) vs. Block Rate trade-off slider.
 - Real-time SLA impact estimation and false escalation cost projections.
 
-### 6. Interactive Sandbox Lab
-
-- Live testing harness to input custom prompts, retrieved contexts, and candidate responses.
-- Evaluates inputs in real-time across all three lanes and provides on-demand Gemini 3.6 Flash judge evaluations.
-
 ## Technology stack and dependencies
 
-| Component              | Technology                                                                     | Purpose                                                    |
-| :--------------------- | :----------------------------------------------------------------------------- | :--------------------------------------------------------- |
-| **Frontend Framework** | [React 19](https://react.dev/) + [TypeScript](https://www.typescriptlang.org/) | Type-safe UI state management and component lifecycle      |
-| **Build Tooling**      | [Vite 6](https://vitejs.dev/)                                                  | Sub-millisecond HMR and optimized production bundling      |
-| **Styling**            | [Tailwind CSS 4](https://tailwindcss.com/)                                     | Modern design system, frosted glassmorphism, fluid layouts |
-| **Data Visualization** | [Recharts 3](https://recharts.org/)                                            | Responsive telemetry and governance metric charts          |
-| **Icons & Visuals**    | [Lucide React](https://lucide.dev/)                                            | Modern visual iconography                                  |
-| **Database Engine**    | [better-sqlite3](https://github.com/WiseLibs/better-sqlite3)                   | High-throughput embedded SQLite database in WAL mode       |
-| **Policy Parser**      | [js-yaml](https://github.com/nodeca/js-yaml)                                   | YAML policy file parsing and schema validation             |
-| **Backend Server**     | [Express](https://expressjs.com/) (Node.js)                                    | REST API, SSE streaming proxy, and static file serving     |
-| **AI LLM Judge**       | [@google/genai](https://www.npmjs.com/package/@google/genai)                   | Server-side integration with Gemini 3.6 / 2.5 Flash models |
-| **Server Bundler**     | [esbuild](https://esbuild.github.io/)                                          | Fast bundling of backend TypeScript into `dist/server.cjs` |
-| **Test Runner**        | [Vitest 3](https://vitest.dev/)                                                | Unit testing and v8 code coverage analysis                 |
-| **Containerization**   | [Docker](https://www.docker.com/)                                              | Multi-stage production container with health checks        |
+| Component              | Technology                                                                     | Purpose                                                       |
+| :--------------------- | :----------------------------------------------------------------------------- | :------------------------------------------------------------ |
+| **Frontend Framework** | [React 19](https://react.dev/) + [TypeScript](https://www.typescriptlang.org/) | Type-safe UI state management and component lifecycle         |
+| **Build Tooling**      | [Vite 6](https://vitejs.dev/)                                                  | Sub-millisecond HMR and optimized production bundling         |
+| **Styling**            | [Tailwind CSS 4](https://tailwindcss.com/)                                     | Modern design system, frosted glassmorphism, fluid layouts    |
+| **Data Visualization** | [Recharts 3](https://recharts.org/)                                            | Responsive telemetry and governance metric charts             |
+| **Icons & Visuals**    | [Lucide React](https://lucide.dev/)                                            | Modern visual iconography                                     |
+| **Database Engine**    | [better-sqlite3](https://github.com/WiseLibs/better-sqlite3)                   | High-throughput embedded SQLite database in WAL mode          |
+| **Policy Parser**      | [js-yaml](https://github.com/nodeca/js-yaml)                                   | YAML policy file parsing and schema validation                |
+| **Backend Server**     | [Express](https://expressjs.com/) (Node.js)                                    | REST API, SSE streaming proxy, and static file serving        |
+| **Cloud LLM Judge**    | [@google/genai](https://www.npmjs.com/package/@google/genai)                   | Server-side integration with Gemini 3.6 / 3.8 Flash models    |
+| **Local LLM Judge**    | [Ollama](https://ollama.com/) (Qwen 2.5: 7B)                                   | Zero-egress sovereign on-premises evaluation                  |
+| **Server Bundler**     | [esbuild](https://esbuild.github.io/)                                          | Fast bundling of backend TypeScript into `dist/server.cjs`    |
+| **Test Runner**        | [Vitest 3](https://vitest.dev/)                                                | Unit testing and v8 code coverage analysis (92 tests passing) |
+| **Containerization**   | [Docker](https://www.docker.com/)                                              | Multi-stage production container with health checks           |
 
 ## Security and privacy posture
 
 - **Zero Client-Side Key Exposure**: The `GEMINI_API_KEY` is strictly accessed on the server. No credentials or keys are bundled or transmitted to the client.
-- **Fail-Safe Heuristic Simulation**: In air-gapped environments or scenarios where `GEMINI_API_KEY` is omitted, the platform gracefully switches to deterministic semantic and statistical heuristics without failing requests.
+- **Zero-Egress Sovereign LLM Option**: Support for local Ollama instances ensures completely sovereign evaluation without any data leaving private network boundaries.
+- **Fail-Safe Heuristic Simulation**: In air-gapped environments or scenarios where external LLMs are unavailable, the platform gracefully switches to deterministic semantic and statistical heuristics without failing requests.
 - **Cryptographic Audit Trail**: Immutable SHA-256 HMAC hash chaining ensures all evaluation records and HITL triage decisions are tamper-evident.
 - **Luhn Algorithm Validation**: Credit card scanning uses algorithmic checksum verification, preventing false-positive customer ID matches while ensuring real financial leaks are caught.
+- **Pre-Flight Input Guard**: Proactively intercepts injection attacks, jailbreaks, and sensitive data prior to model invocation.
 - **Streaming Token Interception**: SSE token streams are inspected chunk-by-chunk with immediate stream termination if PII or credentials appear.
 - **Strict Environment Isolation**: All `.env*` files are excluded from version control via `.gitignore`.
 - **Zero Known Vulnerabilities**: Verified clean with `npm audit` (0 vulnerabilities).
@@ -447,14 +509,15 @@ ControlPlane-Checker/
 ├── src/
 │   ├── main.tsx              # React DOM mounting
 │   ├── App.tsx               # Main application controller & tab orchestration
-│   ├── types.ts              # Domain types (Lanes, Tiers, Policies, Telemetry)
+│   ├── types.ts              # Domain types (Lanes, Tiers, Policies, Judge types)
 │   ├── index.css             # Tailwind 4 theme & custom glassmorphism styles
 │   ├── components/           # UI Components & Tabs
 │   │   ├── AmbientShaderBackground.tsx # Hardware-accelerated CSS ambient mesh
 │   │   ├── DashboardTab.tsx            # Executive KPI & overview charts
-│   │   ├── GeminiJudgeResultCard.tsx   # LLM Judge evaluation breakdown card
+│   │   ├── GeminiJudgeResultCard.tsx   # Multi-Judge & Dual consensus evaluation card
+│   │   ├── GlassDropdown.tsx           # Accessible frosted glass dropdown component
 │   │   ├── Header.tsx                  # Global navigation bar & tester trigger
-│   │   ├── InteractionTesterModal.tsx  # Live interactive sandbox tester
+│   │   ├── InteractionTesterModal.tsx  # Live interactive sandbox with Judge selector
 │   │   ├── LiveFeedTab.tsx             # Real-time telemetry feed & stream
 │   │   ├── PolicyProfilesTab.tsx       # Per-use-case policy threshold editor
 │   │   ├── ReviewQueueTab.tsx          # Frontline HITL adjudication portal
@@ -466,6 +529,7 @@ ControlPlane-Checker/
 │   │   └── interactions.ts             # Multi-domain synthetic interaction dataset
 │   ├── lib/                  # Core Business Logic & Decision Engine
 │   │   ├── decisionEngine.ts           # 3-lane aggregator & session compounding
+│   │   ├── inputGuard.ts               # Shared input guard & prompt injection rules
 │   │   ├── metrics.ts                  # Confusion matrix & PR calculations
 │   │   ├── policyProfiles.ts           # Fallback policy profile definitions
 │   │   ├── lanes/                      # Individual Lane Evaluators
@@ -482,7 +546,10 @@ ControlPlane-Checker/
 │       ├── auth.ts                     # API key authentication & rate limiting
 │       ├── circuitBreaker.ts           # Fault-tolerant provider circuit breaker
 │       ├── gateway.ts                  # OpenAI-compatible chat completions proxy
-│       ├── inputGuard.ts               # Prompt injection & jailbreak detection
+│       ├── gateway.test.ts             # Unit tests for gateway proxy & fallbacks
+│       ├── inputGuard.ts               # Server wrapper for input guard scanning
+│       ├── judge.ts                    # Multi-provider LLM Judge (Gemini, Qwen, Dual)
+│       ├── judge.test.ts               # Unit tests for LLM judge resilience & consensus
 │       ├── policyLoader.ts             # YAML policy loader & directory watcher
 │       ├── rollingBaseline.ts          # Welford algorithm dynamic streaming baseline
 │       ├── streamInterceptor.ts        # SSE chunk interceptor & emergency cutter
@@ -497,8 +564,12 @@ ControlPlane-Checker/
 ## Troubleshooting
 
 - **Missing Gemini API Key (`GEMINI_API_KEY`)**:
-  - If no API key is provided, the backend falls back to deterministic heuristic evaluation. Real-time governance will continue to operate without external network calls.
-  - To enable live Gemini LLM Judge features, generate a key at [Google AI Studio](https://aistudio.google.com/app/apikey) and set `GEMINI_API_KEY` in `.env`.
+  - If no Gemini key is provided, the platform automatically utilizes local Ollama models (if available) or deterministic heuristics. Real-time governance will continue to operate without external network calls.
+  - To enable Gemini Cloud Judge features, generate a key at [Google AI Studio](https://aistudio.google.com/app/apikey) and set `GEMINI_API_KEY` in `.env`.
+- **Using Local Ollama Judge (`qwen2.5:7b`)**:
+  - Ensure Ollama is installed and running (`ollama serve`).
+  - Pull the model: `ollama pull qwen2.5:7b`.
+  - The UI will automatically detect when Ollama is online.
 - **Port 3000 already in use**:
   - Update `PORT=3001` (or another available port) in `.env` and restart the server.
 - **Native module compilation (`better-sqlite3`)**:
@@ -510,7 +581,11 @@ ControlPlane-Checker/
 
 **Q: Can ControlPlane Checker serve as an inline reverse proxy for existing applications?**
 
-**A:** Yes. ControlPlane Checker exposes an OpenAI-compatible endpoint at `/v1/chat/completions`. You can point any OpenAI SDK client (Python, Node.js, LangChain) directly to `http://localhost:3000/v1` with your ControlPlane API key to gain automatic prompt injection guarding, token streaming interception, and audit logging.
+**A:** Yes. ControlPlane Checker exposes an OpenAI-compatible endpoint at `/v1/chat/completions`. You can point any OpenAI SDK client (Python, Node.js, LangChain) directly to `http://localhost:3000/v1` with your ControlPlane API key to gain automatic prompt injection guarding, token streaming interception, model fallbacks, and audit logging.
+
+**Q: How does the Dual Judge consensus mechanism work?**
+
+**A:** Dual Judge executes Google Gemini and local sovereign Qwen 2.5: 7B in parallel. It calculates score discrepancies across Groundedness, Certainty, and Mismatch. If both models agree, the consensus verdict is enacted; if they disagree, the engine conservatively selects the stricter risk tier (`CONFIDENTLY_WRONG` > `UNSUPPORTED` > `AMBIGUOUS` > `SUPPORTED`) and aggregates triggering spans.
 
 **Q: How does the cryptographic audit chain work?**
 

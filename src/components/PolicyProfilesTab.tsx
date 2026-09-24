@@ -6,6 +6,7 @@
 import React, { useState } from 'react';
 import { GeographyRuleset, PolicyProfile, UseCaseId } from '../types';
 import { policyToYaml } from '../lib/policyProfiles';
+import { GlassDropdown } from './GlassDropdown';
 import {
   Sliders,
   FileCode,
@@ -464,28 +465,53 @@ export const PolicyProfilesTab: React.FC<PolicyProfilesTabProps> = ({
               </div>
 
               <div className="space-y-2">
-                <label className="text-[13px] text-[#344054] font-medium block">
-                  Active ruleset version
-                </label>
-                <select
+                <GlassDropdown<GeographyRuleset>
+                  id="ruleset-version-select"
+                  label="Active ruleset version"
                   value={currentProfile.geography_ruleset}
-                  onChange={(e) =>
+                  onChange={(val) =>
                     onUpdateProfile(activeUseCase, {
                       ...currentProfile,
-                      geography_ruleset: e.target.value as GeographyRuleset,
+                      geography_ruleset: val,
                     })
                   }
-                  className="w-full glass-input rounded-xl p-3 text-xs text-[#101828] cursor-pointer"
-                >
-                  <option value="EU_AI_ACT_STANDARD">
-                    EU AI Act (High-Risk AI &amp; GDPR Art 5)
-                  </option>
-                  <option value="US_HIPAA_FINRA">
-                    US Financial &amp; Health (GLBA / ECOA / HIPAA)
-                  </option>
-                  <option value="INDIA_DPDP_ACT">India DPDPA 2023 (Digital Personal Data)</option>
-                  <option value="INTERNAL_IP_SECURITY">Internal Corp Security (SEC-804 IP)</option>
-                </select>
+                  fullWidth
+                  size="md"
+                  options={[
+                    {
+                      value: 'EU_AI_ACT_STANDARD',
+                      label: 'EU AI Act (High-Risk AI & GDPR Art 5)',
+                      description:
+                        'Article 5 transparency mandates, conformity assessment, and high-risk safeguards.',
+                      badge: 'EU',
+                      badgeColor: 'bg-[#EFF6FF] text-[#175CD3] border-[#B2DDFF]',
+                    },
+                    {
+                      value: 'US_HIPAA_FINRA',
+                      label: 'US Financial & Health (GLBA / ECOA / HIPAA)',
+                      description:
+                        'Strict PHI/PII redaction, financial fairness, and consumer non-public disclosure shields.',
+                      badge: 'US',
+                      badgeColor: 'bg-[#ECFDF3] text-[#067647] border-[#ABEFC6]',
+                    },
+                    {
+                      value: 'INDIA_DPDP_ACT',
+                      label: 'India DPDPA 2023 (Digital Personal Data)',
+                      description:
+                        'Personal data principal rights, statutory purpose limitation, and consent audits.',
+                      badge: 'IN',
+                      badgeColor: 'bg-[#FFFAEB] text-[#B54708] border-[#FEDF89]',
+                    },
+                    {
+                      value: 'INTERNAL_IP_SECURITY',
+                      label: 'Internal Corp Security (SEC-804 IP)',
+                      description:
+                        'Proprietary source code leak interception, trade secrets, and credential defense.',
+                      badge: 'SEC',
+                      badgeColor: 'bg-[#F4F3FF] text-[#6941C6] border-[#D9D6FE]',
+                    },
+                  ]}
+                />
                 <p className="text-[11px] text-[#667085] leading-relaxed">
                   Enforces domain-specific compliance assertions without modifying model backend
                   code.

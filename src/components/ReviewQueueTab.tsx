@@ -12,6 +12,7 @@ import {
   VerdictTier,
 } from '../types';
 import { VerdictBadge } from './VerdictBadge';
+import { GlassDropdown } from './GlassDropdown';
 import {
   ShieldAlert,
   ShieldCheck,
@@ -57,6 +58,7 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [showResetConfirm, setShowResetConfirm] = useState<boolean>(false);
+  const [violationFilter, setViolationFilter] = useState<string>('ALL');
 
   // Auto-expand and scroll to selected ID when navigated from other tabs
   useEffect(() => {
@@ -99,6 +101,19 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
 
   const reviewedIds = new Set(reviewDecisions.map((d) => d.interaction_id));
   const pendingInteractions = escalatedInteractions.filter((i) => !reviewedIds.has(i.id));
+
+  const filteredPendingInteractions = pendingInteractions.filter((item) => {
+    if (violationFilter === 'ALL') return true;
+    const evalRes = evaluations[item.id];
+    if (!evalRes) return true;
+
+    if (violationFilter === 'OVERLAP') return evalRes.has_multi_lane_overlap;
+    if (violationFilter === 'HALLUCINATION') return evalRes.performance.is_confidently_wrong;
+    if (violationFilter === 'PII') return evalRes.responsibility.pii_detected.length > 0;
+    if (violationFilter === 'BIAS') return evalRes.responsibility.bias_flags.length > 0;
+    if (violationFilter === 'COST') return evalRes.cost.is_outlier;
+    return true;
+  });
 
   // Initialize first item as expanded if none is set yet and not navigating with specific ID
   useEffect(() => {
@@ -368,26 +383,80 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
 
       {/* 2. Pending Escalated Items List */}
       <div className="space-y-4">
-        <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-          <h3 className="font-headline text-lg text-[#101828] font-semibold tracking-tight flex items-center">
-            <ClipboardList className="h-5 w-5 text-[#D92D20] mr-2" />
-            Frontline Human Triage Queue ({pendingInteractions.length} items)
-          </h3>
-          <span className="text-xs text-[#98A2B3] hidden sm:inline font-medium">
-            Reviewer Target: &lt; 60s per escalated interaction
-          </span>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
+          <div className="flex items-center gap-3">
+            <h3 className="font-headline text-lg text-[#101828] font-semibold tracking-tight flex items-center">
+              <ClipboardList className="h-5 w-5 text-[#D92D20] mr-2" />
+              Frontline Human Triage Queue ({filteredPendingInteractions.length}
+              {filteredPendingInteractions.length !== pendingInteractions.length
+                ? ` of ${pendingInteractions.length}`
+                : ''}{' '}
+              items)
+            </h3>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <GlassDropdown
+              value={violationFilter}
+              onChange={(val) => setViolationFilter(val)}
+              size="sm"
+              align="right"
+              options={[
+                { value: 'ALL', label: 'All Violations' },
+                {
+                  value: 'OVERLAP',
+                  label: 'Multi-Lane Overlap',
+                  badge: 'Overlap',
+                  badgeColor: 'bg-[#FFFAEB] text-[#B54708] border-[#FEDF89]',
+                },
+                {
+                  value: 'HALLUCINATION',
+                  label: 'Claim Mismatch / Hallucination',
+                  badge: 'Hallucination',
+                  badgeColor: 'bg-[#FEF3F2] text-[#B42318] border-[#FECDCA]',
+                },
+                {
+                  value: 'PII',
+                  label: 'PII Disclosures',
+                  badge: 'PII',
+                  badgeColor: 'bg-[#F4F3FF] text-[#6941C6] border-[#D9D6FE]',
+                },
+                {
+                  value: 'BIAS',
+                  label: 'Stereotype / Bias',
+                  badge: 'Bias',
+                  badgeColor: 'bg-[#F4F3FF] text-[#6941C6] border-[#D9D6FE]',
+                },
+                {
+                  value: 'COST',
+                  label: 'Cost / Token Anomaly',
+                  badge: 'Cost',
+                  badgeColor: 'bg-[#FFFAEB] text-[#B54708] border-[#FEDF89]',
+                },
+              ]}
+            />
+            <span className="text-xs text-[#98A2B3] hidden lg:inline font-medium">
+              Reviewer Target: &lt; 60s per item
+            </span>
+          </div>
         </div>
 
-        {pendingInteractions.length === 0 ? (
+        {filteredPendingInteractions.length === 0 ? (
           <div className="glass-panel rounded-2xl p-12 text-center">
             <CheckCircle2 className="h-10 w-10 text-[#12B76A] mx-auto mb-3" />
-            <p className="text-sm font-semibold text-[#101828]">Review Queue is Completely Clean</p>
+            <p className="text-sm font-semibold text-[#101828]">
+              {pendingInteractions.length === 0
+                ? 'Review Queue is Completely Clean'
+                : 'No pending items match this violation filter'}
+            </p>
             <p className="text-xs text-[#667085] mt-1">
-              All escalated items have been triaged or no blocking violations are currently pending.
+              {pendingInteractions.length === 0
+                ? 'All escalated items have been triaged or no blocking violations are currently pending.'
+                : 'Select "All Violations" or choose another violation category above.'}
             </p>
           </div>
         ) : (
-          pendingInteractions.map((item) => {
+          filteredPendingInteractions.map((item) => {
             const evalRes = evaluations[item.id];
             if (!evalRes) return null;
 
@@ -457,15 +526,23 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
                     <VerdictBadge verdict={evalRes.verdict} size="sm" />
                     <button
                       type="button"
-                      className="p-1.5 rounded-lg text-[#98A2B3] hover:text-[#101828] hover:bg-white/60 transition-colors"
-                      title={isExpanded ? 'Collapse dropdown' : 'Expand dropdown'}
-                      aria-label={isExpanded ? 'Collapse dropdown' : 'Expand dropdown'}
+                      className={`p-1.5 rounded-xl border transition-all duration-200 cursor-pointer ${
+                        isExpanded
+                          ? 'bg-[#EEF0FE] text-[#4F46E5] border-[#D9D6FE] shadow-2xs'
+                          : 'bg-white/70 hover:bg-white text-[#98A2B3] hover:text-[#101828] border-slate-200/80 hover:border-slate-300 shadow-2xs'
+                      }`}
+                      title={
+                        isExpanded ? 'Collapse inspection details' : 'Expand inspection details'
+                      }
+                      aria-label={
+                        isExpanded ? 'Collapse inspection details' : 'Expand inspection details'
+                      }
                     >
-                      {isExpanded ? (
-                        <ChevronUp className="h-4 w-4" />
-                      ) : (
-                        <ChevronDown className="h-4 w-4" />
-                      )}
+                      <ChevronDown
+                        className={`h-4 w-4 transition-transform duration-200 ${
+                          isExpanded ? 'rotate-180 text-[#4F46E5]' : 'text-[#667085]'
+                        }`}
+                      />
                     </button>
                   </div>
                 </div>
@@ -707,8 +784,12 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-200 pb-3 gap-3">
           <h3 className="font-headline text-lg text-[#101828] font-semibold tracking-tight flex items-center">
             <History className="h-5 w-5 text-[#2E90FA] mr-2.5" />
-            Append-Only Review Decision Audit Trail (FR-20 / FR-25)
+            Review Decision Audit Trail
           </h3>
+          {/* <h3 className="font-headline text-lg text-[#101828] font-semibold tracking-tight flex items-center">
+            <History className="h-5 w-5 text-[#2E90FA] mr-2.5" />
+            Append-Only Review Decision Audit Trail (FR-20 / FR-25)
+          </h3> */}
           <div className="flex items-center space-x-3">
             <span className="text-xs text-[#667085] whitespace-nowrap font-medium">
               <span className="font-mono tnum text-[#475467] font-semibold">

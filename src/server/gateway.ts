@@ -22,6 +22,7 @@ import type { PolicyProfile, SyntheticInteraction, SessionState } from '../types
 import { scanInput, type InputGuardResult } from './inputGuard.js';
 import { interceptStream } from './streamInterceptor.js';
 import { CircuitBreaker } from './circuitBreaker.js';
+import { calculateBackoffWithJitter, sleep } from './judge.js';
 
 // ──────────────────────────────────────────────────────────────────────
 // Upstream Provider Configuration
@@ -50,6 +51,11 @@ const UPSTREAM_PROVIDERS: Record<string, UpstreamProvider> = {
     baseUrl: 'https://api.anthropic.com/v1',
     apiKeyEnvVar: 'ANTHROPIC_API_KEY',
   },
+  ollama: {
+    name: 'Local Ollama (Qwen)',
+    baseUrl: `${(process.env.OLLAMA_BASE_URL || 'http://localhost:11434').replace(/\/+$/, '')}/v1`,
+    apiKeyEnvVar: 'OLLAMA_API_KEY',
+  },
 };
 
 /**
@@ -57,6 +63,9 @@ const UPSTREAM_PROVIDERS: Record<string, UpstreamProvider> = {
  */
 function resolveUpstreamProvider(model: string): UpstreamProvider {
   const modelLower = model.toLowerCase();
+  if (modelLower.includes('qwen') || modelLower.includes('ollama')) {
+    return UPSTREAM_PROVIDERS['ollama'];
+  }
   if (modelLower.includes('gemini') || modelLower.includes('models/')) {
     return UPSTREAM_PROVIDERS['gemini'];
   }
@@ -72,24 +81,27 @@ function resolveUpstreamProvider(model: string): UpstreamProvider {
 // ──────────────────────────────────────────────────────────────────────
 
 const gatewaySessions: Record<string, SessionState> = {};
+const MAX_SESSIONS = 5000;
 
 function getSessionState(sessionId: string): SessionState {
   if (!gatewaySessions[sessionId]) {
+    const keys = Object.keys(gatewaySessions);
+    if (keys.length >= MAX_SESSIONS) {
+      delete gatewaySessions[keys[0]];
+    }
     gatewaySessions[sessionId] = { events: [], currentRisk: 0 };
   }
   return gatewaySessions[sessionId];
 }
 
 function updateSessionState(sessionId: string, risk: number, turnNumber: number): void {
-  if (!gatewaySessions[sessionId]) {
-    gatewaySessions[sessionId] = { events: [], currentRisk: 0 };
-  }
-  gatewaySessions[sessionId].events.push({
+  const session = getSessionState(sessionId);
+  session.events.push({
     risk,
     turnNumber,
     timestamp: Date.now(),
   });
-  gatewaySessions[sessionId].currentRisk = risk;
+  session.currentRisk = risk;
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -115,7 +127,7 @@ export async function handleChatCompletions(
 
   try {
     const body = req.body;
-    const model = body.model || 'gemini-2.0-flash';
+    const model = body.model || 'gemini-3.6-flash';
     const isStreaming = body.stream === true;
     const messages = body.messages || [];
 
@@ -132,8 +144,14 @@ export async function handleChatCompletions(
       return;
     }
 
-    // ── 2. Pre-flight input guard ──
-    const lastUserMessage = messages.filter((m: any) => m.role === 'user').pop()?.content || '';
+    // ── 2. Pre-flight input guard (safely handling string or multimodal parts) ──
+    const rawUserContent = messages.filter((m: any) => m.role === 'user').pop()?.content || '';
+    const lastUserMessage =
+      typeof rawUserContent === 'string'
+        ? rawUserContent
+        : Array.isArray(rawUserContent)
+          ? rawUserContent.map((p: any) => (typeof p === 'string' ? p : p?.text || '')).join(' ')
+          : '';
 
     const inputGuard: InputGuardResult = scanInput(lastUserMessage, policyKey);
     if (!inputGuard.pass) {
@@ -169,9 +187,31 @@ export async function handleChatCompletions(
       console.warn('[Gateway] Circuit breaker OPEN — FAIL_OPEN mode, bypassing governance');
     }
 
-    // ── 4. Resolve upstream provider ──
-    const provider = resolveUpstreamProvider(model);
-    const apiKey = process.env[provider.apiKeyEnvVar];
+    // ── 4. Resolve upstream provider & model fallback list ──
+    // Uses standard production models and avoids preview/lite variants.
+    const GEMINI_FALLBACK_MODELS = Array.from(
+      new Set(
+        [
+          process.env.GEMINI_MODEL,
+          'gemini-3.6-flash',
+          'gemini-flash-latest',
+          'gemini-3.5-flash',
+          'gemini-3.7-flash',
+        ].filter(Boolean) as string[],
+      ),
+    );
+
+    // Build ordered model list: requested model first, then fallbacks
+    const requestedModel = model;
+    const modelsToTry = [
+      requestedModel,
+      ...GEMINI_FALLBACK_MODELS.filter((m) => m !== requestedModel),
+    ];
+
+    const provider = resolveUpstreamProvider(requestedModel);
+    const apiKey =
+      process.env[provider.apiKeyEnvVar] ||
+      (provider.apiKeyEnvVar === 'OLLAMA_API_KEY' ? 'ollama-local-key' : '');
     if (!apiKey) {
       res.status(500).json({
         error: {
@@ -182,33 +222,118 @@ export async function handleChatCompletions(
       return;
     }
 
-    // ── 5. Forward to upstream ──
+    // ── 5. Forward to upstream with automatic model fallback & exponential backoff ──
     const upstreamUrl = `${provider.baseUrl}/chat/completions`;
     const upstreamHeaders: Record<string, string> = {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiKey}`,
     };
 
-    const upstreamBody = {
-      ...body,
-      // Ensure stream is passed through
-      stream: isStreaming,
-    };
+    let upstreamResponse: globalThis.Response | null = null;
+    let usedModel = requestedModel;
+    let lastError = '';
+    const MAX_RETRIES_PER_MODEL = 3;
 
-    let upstreamResponse: globalThis.Response;
-    try {
-      upstreamResponse = await fetch(upstreamUrl, {
-        method: 'POST',
-        headers: upstreamHeaders,
-        body: JSON.stringify(upstreamBody),
-      });
-      upstreamBreaker.recordSuccess();
-    } catch (err: any) {
+    for (const candidateModel of modelsToTry) {
+      let candidateResolved = false;
+
+      for (let attempt = 0; attempt < MAX_RETRIES_PER_MODEL; attempt++) {
+        try {
+          const upstreamBody = {
+            ...body,
+            model: candidateModel,
+            stream: isStreaming,
+          };
+
+          const resp = await fetch(upstreamUrl, {
+            method: 'POST',
+            headers: upstreamHeaders,
+            body: JSON.stringify(upstreamBody),
+          });
+
+          if (resp.ok) {
+            upstreamResponse = resp;
+            usedModel = candidateModel;
+            upstreamBreaker.recordSuccess();
+            if (candidateModel !== requestedModel) {
+              console.log(
+                `[Gateway] Model fallback: ${requestedModel} → ${candidateModel} (success)`,
+              );
+            }
+            candidateResolved = true;
+            break;
+          }
+
+          // Retryable status codes: 503 (overloaded), 429 (rate limited / quota)
+          if ([503, 429].includes(resp.status)) {
+            const errText = await resp.text();
+            lastError = errText;
+            if (attempt < MAX_RETRIES_PER_MODEL - 1) {
+              const delayMs = calculateBackoffWithJitter(attempt, 2000, 16000, 500);
+              console.warn(
+                `[Gateway] Model ${candidateModel} returned ${resp.status} (${resp.status === 429 ? 'quota/rate limited' : 'high demand'}). Backing off for ${delayMs}ms with jitter (attempt ${attempt + 1}/${MAX_RETRIES_PER_MODEL})...`,
+              );
+              await sleep(delayMs);
+              continue;
+            } else {
+              console.warn(
+                `[Gateway] Model ${candidateModel} retries exhausted (${resp.status}), advancing to next model tier...`,
+              );
+              await sleep(1000);
+              break;
+            }
+          }
+
+          // 404 (model not found / deprecated) - skip candidate immediately without redundant retries
+          if (resp.status === 404) {
+            const errText = await resp.text();
+            lastError = errText;
+            console.warn(
+              `[Gateway] Model ${candidateModel} returned 404 (not found / deprecated), skipping to next tier...`,
+            );
+            break;
+          }
+
+          // Non-retryable error — return immediately
+          const errorBody = await resp.text();
+          upstreamBreaker.recordFailure();
+          res.status(resp.status).json({
+            error: {
+              message: `Upstream error: ${errorBody}`,
+              type: 'upstream_error',
+            },
+          });
+          return;
+        } catch (err: any) {
+          lastError = err.message;
+          if (attempt < MAX_RETRIES_PER_MODEL - 1) {
+            const delayMs = calculateBackoffWithJitter(attempt, 2000, 16000, 500);
+            console.warn(
+              `[Gateway] Model ${candidateModel} network error: ${err.message}. Retrying in ${delayMs}ms...`,
+            );
+            await sleep(delayMs);
+          } else {
+            console.warn(
+              `[Gateway] Model ${candidateModel} network retries exhausted: ${err.message}, trying next...`,
+            );
+            await sleep(1000);
+            break;
+          }
+        }
+      }
+
+      if (candidateResolved) {
+        break;
+      }
+    }
+
+    // All models exhausted
+    if (!upstreamResponse) {
       upstreamBreaker.recordFailure();
       if (failMode === 'FAIL_CLOSED') {
         res.status(502).json({
           error: {
-            message: `Upstream provider error: ${err.message}`,
+            message: `All upstream models unavailable. Last error: ${lastError}`,
             type: 'upstream_error',
           },
         });
@@ -231,19 +356,8 @@ export async function handleChatCompletions(
         ],
         governance: {
           mode: 'FAIL_OPEN',
-          reason: 'Upstream provider unavailable',
-        },
-      });
-      return;
-    }
-
-    if (!upstreamResponse.ok) {
-      const errorBody = await upstreamResponse.text();
-      upstreamBreaker.recordFailure();
-      res.status(upstreamResponse.status).json({
-        error: {
-          message: `Upstream error: ${errorBody}`,
-          type: 'upstream_error',
+          reason: 'All upstream models unavailable',
+          models_attempted: modelsToTry,
         },
       });
       return;
@@ -268,10 +382,22 @@ export async function handleChatCompletions(
     }
 
     // ── 7. Non-streaming: full response evaluation ──
-    const upstreamData = (await upstreamResponse.json()) as any;
+    let upstreamData: any;
+    try {
+      upstreamData = await upstreamResponse.json();
+    } catch {
+      res.status(502).json({
+        error: {
+          message: 'Upstream returned invalid non-JSON payload',
+          type: 'upstream_error',
+        },
+      });
+      return;
+    }
+
     const assistantMessage = upstreamData.choices?.[0]?.message?.content || '';
 
-    // Build a SyntheticInteraction-like object for the evaluator
+    // Build a SyntheticInteraction object for the evaluator
     const interaction: SyntheticInteraction = {
       id: `gw-${Date.now()}`,
       use_case: policyKey as any,
@@ -279,7 +405,7 @@ export async function handleChatCompletions(
       turn_number: turnNumber,
       query_type: 'gateway_request',
       prompt: lastUserMessage,
-      retrieved_context: null, // Could be extracted from system message or RAG context
+      retrieved_context: null,
       response: assistantMessage,
       token_count: {
         prompt: upstreamData.usage?.prompt_tokens || 0,
@@ -287,10 +413,10 @@ export async function handleChatCompletions(
         total: upstreamData.usage?.total_tokens || 0,
       },
       latency_ms: Math.round(performance.now() - startTime),
-      ground_truth_labels: ['clean'], // Unknown at gateway time
+      ground_truth_labels: ['clean'],
       metadata: {
         created_at: new Date().toISOString(),
-        model_name: model,
+        model_name: usedModel,
       },
     };
 
@@ -299,6 +425,15 @@ export async function handleChatCompletions(
 
     // Update session state
     updateSessionState(sessionId, evaluation.composite_risk_score, turnNumber);
+
+    // Set governance headers on all evaluated responses
+    res.set({
+      'X-ControlPlane-Verdict': evaluation.verdict,
+      'X-ControlPlane-Risk-Score': evaluation.composite_risk_score.toString(),
+      'X-ControlPlane-Session-Risk': evaluation.session_accumulated_risk.toString(),
+      'X-ControlPlane-Policy-Version': policy.version,
+      'X-ControlPlane-Latency-Ms': Math.round(performance.now() - startTime).toString(),
+    });
 
     // ── 8. Apply verdict ──
     if (evaluation.verdict === 'BLOCK_ESCALATE' && policy.pre_response_blocking) {
@@ -332,15 +467,6 @@ export async function handleChatCompletions(
       });
       return;
     }
-
-    // For BADGE/SOFT_CORRECT/ALLOW, return the response with governance headers
-    res.set({
-      'X-ControlPlane-Verdict': evaluation.verdict,
-      'X-ControlPlane-Risk-Score': evaluation.composite_risk_score.toString(),
-      'X-ControlPlane-Session-Risk': evaluation.session_accumulated_risk.toString(),
-      'X-ControlPlane-Policy-Version': policy.version,
-      'X-ControlPlane-Latency-Ms': Math.round(performance.now() - startTime).toString(),
-    });
 
     // For SOFT_CORRECT, inject a disclaimer into the response
     let finalContent = assistantMessage;

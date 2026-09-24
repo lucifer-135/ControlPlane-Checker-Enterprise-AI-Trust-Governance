@@ -10,6 +10,7 @@ import {
   ReviewDecision,
   SyntheticInteraction,
   UseCaseId,
+  JudgeProvider,
 } from './types';
 import { SYNTHETIC_INTERACTIONS } from './data/interactions';
 import { DEFAULT_POLICY_PROFILES } from './lib/policyProfiles';
@@ -32,6 +33,34 @@ export function App() {
   const [activeUseCase, setActiveUseCase] = useState<UseCaseId | 'ALL'>('ALL');
   const [policyUseCase, setPolicyUseCase] = useState<UseCaseId>('support_bot');
   const [isTesterOpen, setIsTesterOpen] = useState<boolean>(false);
+
+  // Judge Provider State (Gemini Cloud, Local Qwen 2.5: 7B, or Dual Consensus)
+  const [selectedJudgeProvider, setSelectedJudgeProvider] = useState<JudgeProvider>(() => {
+    return (localStorage.getItem('cp_judge_provider') as JudgeProvider) || 'gemini';
+  });
+  const [localLLMStatus, setLocalLLMStatus] = useState<{
+    available: boolean;
+    installed: boolean;
+    endpoint: string;
+    model: string;
+  }>({
+    available: false,
+    installed: false,
+    endpoint: 'http://localhost:11434',
+    model: 'qwen2.5:7b',
+  });
+
+  // Query /api/health to discover local LLM status
+  useEffect(() => {
+    fetch('/api/health')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.localLLM) {
+          setLocalLLMStatus(data.localLLM);
+        }
+      })
+      .catch((err) => console.warn('Health probe failed:', err));
+  }, []);
 
   // Policy Profiles State
   const [policyProfiles, setPolicyProfiles] =
@@ -183,8 +212,11 @@ export function App() {
     }).catch((err) => console.warn('Could not reset review decisions on server:', err));
   };
 
-  // Call Gemini 3.6 Flash LLM Judge via server endpoint
-  const handleRunJudge = async (interaction: SyntheticInteraction) => {
+  // Call LLM Judge (Gemini, Local Qwen 2.5: 7B, or Dual Consensus) via server endpoint
+  const handleRunJudge = async (
+    interaction: SyntheticInteraction,
+    provider: JudgeProvider = selectedJudgeProvider,
+  ) => {
     try {
       const resp = await fetch('/api/judge', {
         method: 'POST',
@@ -196,6 +228,7 @@ export function App() {
           response: interaction.response,
           responseText: interaction.response,
           useCase: interaction.use_case,
+          provider,
         }),
       });
 
@@ -297,6 +330,14 @@ export function App() {
               setActiveUseCaseFilter={setActiveUseCase}
               streamTrigger={streamTrigger}
               onStreamTriggerHandled={() => setStreamTrigger(0)}
+              judgeProvider={selectedJudgeProvider}
+              onSelectJudgeProvider={(p) => {
+                setSelectedJudgeProvider(p);
+                try {
+                  localStorage.setItem('cp_judge_provider', p);
+                } catch {}
+              }}
+              localLLMStatus={localLLMStatus}
             />
           )}
 
@@ -342,6 +383,14 @@ export function App() {
         onClose={() => setIsTesterOpen(false)}
         policyProfiles={policyProfiles}
         onRunJudge={handleRunJudge}
+        judgeProvider={selectedJudgeProvider}
+        onSelectJudgeProvider={(p) => {
+          setSelectedJudgeProvider(p);
+          try {
+            localStorage.setItem('cp_judge_provider', p);
+          } catch {}
+        }}
+        localLLMStatus={localLLMStatus}
       />
 
       {/* 4. Footer */}

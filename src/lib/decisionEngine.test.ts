@@ -179,3 +179,98 @@ describe('session compounding (exponential time-decay)', () => {
     );
   });
 });
+
+describe('session compounding floor', () => {
+  const findInteraction = (id: string) => SYNTHETIC_INTERACTIONS.find((i) => i.id === id)!;
+
+  function runSession(base: SyntheticInteraction, turns: number) {
+    const policy = DEFAULT_POLICY_PROFILES[base.use_case];
+    const sessionState: SessionState = { events: [], currentRisk: 0 };
+    const verdicts: string[] = [];
+    for (let turn = 1; turn <= turns; turn++) {
+      const result = evaluateInteraction({ ...base, turn_number: turn }, policy, sessionState);
+      sessionState.events.push({
+        risk: result.composite_risk_score,
+        turnNumber: turn,
+        timestamp: Date.now(),
+      });
+      verdicts.push(result.verdict);
+    }
+    return verdicts;
+  }
+
+  it.each(['int-ds-001', 'int-sb-005', 'int-ic-012'])(
+    'keeps a long clean conversation at ALLOW (%s repeated for 12 turns)',
+    (id) => {
+      expect(runSession(findInteraction(id), 12).every((v) => v === 'ALLOW')).toBe(true);
+    },
+  );
+
+  it('does not badge a clean follow-up turn because the previous turn was clean', () => {
+    const { evaluations } = evaluateDataset(SYNTHETIC_INTERACTIONS, DEFAULT_POLICY_PROFILES);
+    expect(evaluations['int-sb-001'].verdict).toBe('ALLOW');
+    expect(evaluations['int-sb-008'].verdict).toBe('ALLOW');
+  });
+
+  it('still escalates repeated borderline probes (crescendo)', () => {
+    const policy = DEFAULT_POLICY_PROFILES.decision_support;
+    const probe = 0.4; // above the badge threshold, below soft_correct on its own
+    const sessionState: SessionState = {
+      events: [1, 2, 3].map((turnNumber) => ({ risk: probe, turnNumber, timestamp: Date.now() })),
+      currentRisk: probe,
+    };
+    const result = evaluateInteraction(
+      { ...findInteraction('int-ds-001'), turn_number: 4 },
+      policy,
+      sessionState,
+    );
+    expect(result.session_accumulated_risk).toBeGreaterThan(result.composite_risk_score);
+    expect(['SOFT_CORRECT', 'BLOCK_ESCALATE']).toContain(result.verdict);
+  });
+});
+
+describe('confidently-wrong hard override', () => {
+  it.each(['int-sb-002', 'int-ic-003'])(
+    'blocks and escalates a confidently wrong answer despite a low weighted composite (%s)',
+    (id) => {
+      const item = SYNTHETIC_INTERACTIONS.find((i) => i.id === id)!;
+      const result = evaluateInteraction(item, DEFAULT_POLICY_PROFILES[item.use_case]);
+      expect(result.performance.is_confidently_wrong).toBe(true);
+      expect(result.composite_risk_score).toBeLessThan(
+        DEFAULT_POLICY_PROFILES[item.use_case].thresholds.block_escalate,
+      );
+      expect(result.verdict).toBe('BLOCK_ESCALATE');
+      expect(result.is_flagged_for_review).toBe(true);
+    },
+  );
+
+  it('does not apply when the performance lane is disabled', () => {
+    const item = SYNTHETIC_INTERACTIONS.find((i) => i.id === 'int-sb-002')!;
+    const base = DEFAULT_POLICY_PROFILES.support_bot;
+    const policy = { ...base, active_lanes: { ...base.active_lanes, performance: false } };
+    expect(evaluateInteraction(item, policy).verdict).not.toBe('BLOCK_ESCALATE');
+  });
+});
+
+describe('synthetic dataset verdicts', () => {
+  it('never allows a violating interaction and never escalates a clean one', () => {
+    const { evaluations } = evaluateDataset(SYNTHETIC_INTERACTIONS, DEFAULT_POLICY_PROFILES);
+    for (const item of SYNTHETIC_INTERACTIONS) {
+      const violating = item.ground_truth_labels.some((l) => l !== 'clean');
+      const verdict = evaluations[item.id].verdict;
+      if (violating) expect(verdict, item.id).not.toBe('ALLOW');
+      else expect(verdict, item.id).toBe('ALLOW');
+    }
+  });
+
+  it('flags the performance lane on every interaction labelled hallucinated', () => {
+    const { evaluations } = evaluateDataset(SYNTHETIC_INTERACTIONS, DEFAULT_POLICY_PROFILES);
+    for (const item of SYNTHETIC_INTERACTIONS.filter((i) =>
+      i.ground_truth_labels.includes('hallucinated'),
+    )) {
+      const perf = evaluations[item.id].performance;
+      const cutoff = DEFAULT_POLICY_PROFILES[item.use_case].thresholds.hallucination_cutoff;
+      expect(perf.groundedness_score, item.id).toBeLessThan(cutoff);
+    }
+  });
+});

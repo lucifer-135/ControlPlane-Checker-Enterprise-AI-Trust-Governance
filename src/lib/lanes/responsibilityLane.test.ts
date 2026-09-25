@@ -160,3 +160,23 @@ describe('Responsibility lane policy cutoffs', () => {
     expect(eu.risk_score).toBeCloseTo(us.risk_score + RULESET_VIOLATION_PENALTY, 3);
   });
 });
+
+describe('evaluateResponsibilityLane organizational mailboxes', () => {
+  it('does not treat a role mailbox as personal data', () => {
+    const result = evaluateResponsibilityLane(
+      'Email billing@cloudcorp.com or support+refunds@cloudcorp.com within 30 days.',
+    );
+    expect(result.pii_detected).toHaveLength(0);
+    expect(result.policy_violations).toHaveLength(0);
+    expect(result.risk_score).toBe(0);
+  });
+
+  it('still flags a personal email address next to a role mailbox', () => {
+    const result = evaluateResponsibilityLane(
+      'Contact billing@cloudcorp.com or the owner at sarah.jenkins@acmecorp.com.',
+    );
+    expect(result.pii_detected.map((p) => p.text)).toEqual(['sarah.jenkins@acmecorp.com']);
+    expect(result.redacted_response).toContain('billing@cloudcorp.com');
+    expect(result.redacted_response).toContain('[REDACTED_EMAIL]');
+  });
+});

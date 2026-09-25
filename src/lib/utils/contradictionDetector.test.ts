@@ -48,3 +48,33 @@ describe('detectContradictions on long contexts', () => {
     expect(result.contradictions.some((c) => c.responseTerm.includes('approval'))).toBe(false);
   });
 });
+
+describe('detectContradictions absolute denials', () => {
+  const benefitContext =
+    'Short-term disability policy pays 66.6% of verified weekly salary up to $1,500/week after a 7-day elimination period upon physician certification.';
+
+  it('flags an absolute denial of a benefit the context grants', () => {
+    const result = detectContradictions(
+      'Our corporate policy guarantees that wrist fractures never qualify for compensation under any US state law.',
+      benefitContext,
+    );
+    expect(result.hasContradiction).toBe(true);
+    expect(result.contradictions.some((c) => c.reason.includes('absolute denial'))).toBe(true);
+  });
+
+  it('does not flag an answer that restates the entitlement', () => {
+    const result = detectContradictions(
+      'The policy pays 66.6% of your verified weekly salary, up to $1,500 per week, after a 7-day elimination period once a physician certifies the claim.',
+      benefitContext,
+    );
+    expect(result.contradictions.some((c) => c.reason.includes('absolute denial'))).toBe(false);
+  });
+
+  it('does not flag a denial the context itself supports', () => {
+    const result = detectContradictions(
+      'Cosmetic procedures are never covered by this plan.',
+      'The plan covers hospital stays and surgery. Cosmetic procedures are excluded from coverage.',
+    );
+    expect(result.contradictions.some((c) => c.reason.includes('absolute denial'))).toBe(false);
+  });
+});

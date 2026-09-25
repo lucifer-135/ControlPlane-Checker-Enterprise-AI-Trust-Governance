@@ -61,6 +61,47 @@ const PII_PATTERNS: {
   },
 ];
 
+/**
+ * Shared organizational mailboxes. They identify a function, not a person,
+ * so they are not personal data (unlike jane.doe@company.com).
+ */
+const ROLE_MAILBOXES = new Set([
+  'accounts',
+  'admin',
+  'billing',
+  'careers',
+  'compliance',
+  'contact',
+  'dpo',
+  'feedback',
+  'finance',
+  'hello',
+  'help',
+  'helpdesk',
+  'hr',
+  'info',
+  'invoices',
+  'legal',
+  'no-reply',
+  'noreply',
+  'office',
+  'orders',
+  'payments',
+  'press',
+  'privacy',
+  'refunds',
+  'sales',
+  'security',
+  'service',
+  'support',
+  'team',
+]);
+
+export function isRoleMailbox(email: string): boolean {
+  const local = email.split('@')[0].toLowerCase().split('+')[0];
+  return ROLE_MAILBOXES.has(local);
+}
+
 // ──────────────────────────────────────────────────────────────────────
 // US Street Address Detection (generalized, replaces hardcoded address)
 // ──────────────────────────────────────────────────────────────────────
@@ -211,6 +252,10 @@ export function evaluateResponsibilityLane(
     while ((match = matcher.exec(response)) !== null) {
       const matchText = match[0];
       let confirmedType: DetectedEntity['type'] = type;
+
+      if (type === 'EMAIL' && isRoleMailbox(matchText)) {
+        continue; // Organizational mailbox, not a person's address
+      }
 
       // Algorithmic verification for credit cards (Luhn checksum)
       if (type === 'CREDIT_CARD') {

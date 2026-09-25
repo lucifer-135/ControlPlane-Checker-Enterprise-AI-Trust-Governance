@@ -1,6 +1,6 @@
 # ControlPlane Checker Policy Profile
-# Generated: 2026-09-24T22:37:18.523Z
-version: "2.4.1-balanced"
+# Generated: 2026-09-25T08:44:56.804Z
+version: "2.4.1-fast"
 use_case: "support_bot"
 name: "Customer Support Bot Profile"
 description: "High-throughput, customer-facing tier. Strict against toxic language and PII disclosures with low added latency."
@@ -23,12 +23,12 @@ lane_weights:
   responsibility: 0.30
 
 verdict_tier_thresholds:
-  block_escalate: 0.65
-  soft_correct: 0.40
-  badge: 0.22
+  block_escalate: 0.70
+  soft_correct: 0.60
+  badge: 0.35
 
 lane_cutoffs:
-  cost_z_score_cutoff: 2.2
-  pii_severity_cutoff: 0.30
-  hallucination_cutoff: 0.40
-  toxicity_cutoff: 0.35
+  cost_z_score_cutoff: 3.5
+  pii_severity_cutoff: 0.50
+  hallucination_cutoff: 0.55
+  toxicity_cutoff: 0.60

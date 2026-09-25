@@ -32,11 +32,13 @@ export type SessionAccumulatorMap = Record<string, SessionState>;
  * Computes the session-accumulated risk using an exponential time-decay
  * half-life model:
  *
- *   R_session(t) = R_t + Σ R_k * e^(-λ * (T_t - T_k))
+ *   R_session(t) = R_t + Σ max(0, R_k - R_floor) * e^(-λ * (T_t - T_k))
  *
  * Where:
  *   λ = ln(2) / t_half
  *   t_half = configurable half-life in turns (default: 5)
+ *   R_floor = risk a clean turn may carry without counting against the session
+ *             (the policy's badge threshold)
  *
  * This means:
  * - A minor probe 5 turns ago contributes only 50% of its original risk.
@@ -49,6 +51,7 @@ export type SessionAccumulatorMap = Record<string, SessionState>;
  * @param currentTurnNumber The turn number within this session.
  * @param sessionState      Previous session state with event history.
  * @param halfLifeTurns     Number of turns for risk to decay by 50% (default: 5).
+ * @param riskFloor         Per-turn risk below which a prior turn adds nothing (default: 0).
  * @returns The new session-accumulated risk score in [0, 1].
  */
 function computeSessionRisk(
@@ -56,15 +59,18 @@ function computeSessionRisk(
   currentTurnNumber: number,
   sessionState: SessionState,
   halfLifeTurns: number = 5,
+  riskFloor: number = 0,
 ): number {
   const lambda = Math.LN2 / halfLifeTurns;
 
+  // Only the part of a prior turn's risk above the floor carries forward, so the
+  // background risk of clean turns never adds up into an escalation on its own.
   let accumulated = 0;
   const events = sessionState && Array.isArray(sessionState.events) ? sessionState.events : [];
   for (const event of events) {
     const turnDelta = currentTurnNumber - event.turnNumber;
     const decay = Math.exp(-lambda * turnDelta);
-    accumulated += event.risk * decay;
+    accumulated += Math.max(0, event.risk - riskFloor) * decay;
   }
 
   return Math.min(1.0, currentTurnRisk + accumulated);
@@ -191,6 +197,7 @@ export function evaluateInteraction(
       interaction.turn_number,
       sessionState,
       5, // half-life of 5 turns
+      policy.thresholds.badge, // turns below the badge threshold are clean
     ).toFixed(3),
   );
 
@@ -213,7 +220,10 @@ export function evaluateInteraction(
       (b) => b.includes('Redlining') || b.includes('Gender') || b.includes('Xenophobia'),
     ) ||
     responsibility.pii_detected.some((p) => p.type === 'SSN' || p.type === 'CREDIT_CARD') ||
-    cost.is_runaway_loop
+    cost.is_runaway_loop ||
+    // A confident answer the context contradicts is the costliest failure; a weighted
+    // average across lanes must not dilute it into a soft correction
+    (policy.active_lanes.performance && performanceResult.is_confidently_wrong)
   ) {
     verdict = 'BLOCK_ESCALATE';
   }

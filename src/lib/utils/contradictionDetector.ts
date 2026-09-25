@@ -175,8 +175,21 @@ function escapeRegex(s: string): string {
 const PHRASE_CONTRADICTIONS: {
   contextPhrase: RegExp;
   responsePhrase: RegExp;
+  /** The pair does not apply when the context itself contains this (e.g. it already excludes cases). */
+  contextException?: RegExp;
   reason: string;
 }[] = [
+  {
+    // "wrist fractures never qualify for compensation" against a policy that pays benefits
+    contextPhrase:
+      /\b(?:pays?|payable|eligible|covered|coverage|qualif(?:y|ies|ied)|entitled|reimburs\w*|compensat\w*)\b/i,
+    responsePhrase:
+      /\b(?:never|under\s+no\s+circumstances|in\s+no\s+case|not\s+under\s+any)\b[^.]{0,40}?\b(?:qualif\w*|eligible|covered|compensat\w*|paid|pay(?:s|able)?|reimburs\w*|approved|entitled)\b/i,
+    contextException:
+      /\b(?:never|excluded|exclusions?|ineligible|not\s+(?:covered|eligible|payable|reimbursable)|does\s+not\s+(?:pay|cover|qualify))\b/i,
+    reason:
+      'Context describes an entitlement but response makes an absolute denial the context does not support.',
+  },
   {
     contextPhrase: /non[- ]?refundable/i,
     responsePhrase: /(?:full|100%|unconditional|guaranteed)\s+(?:cash\s+)?refund/i,
@@ -213,7 +226,11 @@ export function detectContradictions(
 
   // --- 1a. Phrase-level contradiction matching (highest priority) ---
   for (const pc of PHRASE_CONTRADICTIONS) {
-    if (pc.contextPhrase.test(contextLower) && pc.responsePhrase.test(responseLower)) {
+    if (
+      pc.contextPhrase.test(contextLower) &&
+      pc.responsePhrase.test(responseLower) &&
+      !pc.contextException?.test(contextLower)
+    ) {
       const contextMatch = contextLower.match(pc.contextPhrase);
       const responseMatch = responseLower.match(pc.responsePhrase);
       contradictions.push({

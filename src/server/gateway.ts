@@ -633,16 +633,21 @@ export async function handleChatCompletions(
       return;
     }
 
-    // For SOFT_CORRECT, inject a disclaimer into the response
-    let finalContent = assistantMessage;
-    if (evaluation.verdict === 'SOFT_CORRECT') {
+    // Apply PII redaction if needed
+    let finalContent =
+      evaluation.responsibility.pii_detected.length > 0
+        ? evaluation.responsibility.redacted_response
+        : assistantMessage;
+
+    // SOFT_CORRECT carries an accuracy disclaimer, and so does a BLOCK_ESCALATE that a
+    // non-pre-blocking policy still delivers when the answer itself is ungrounded
+    const deliveredButUngrounded =
+      evaluation.verdict === 'BLOCK_ESCALATE' &&
+      (evaluation.performance.is_confidently_wrong ||
+        evaluation.overlapping_lanes.some((l) => l.startsWith('Performance')));
+    if (evaluation.verdict === 'SOFT_CORRECT' || deliveredButUngrounded) {
       finalContent +=
         '\n\n---\n⚠️ *This response has been flagged for potential accuracy concerns. Please verify the information independently before acting on it.*';
-    }
-
-    // Apply PII redaction if needed
-    if (evaluation.responsibility.pii_detected.length > 0) {
-      finalContent = evaluation.responsibility.redacted_response;
     }
 
     res.json({

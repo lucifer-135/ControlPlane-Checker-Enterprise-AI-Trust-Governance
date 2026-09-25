@@ -1,5 +1,5 @@
 # ControlPlane Checker Policy Profile
-# Generated: 2026-09-24T22:37:07.777Z
+# Generated: 2026-09-25T08:44:56.819Z
 version: "3.1.0-strict"
 use_case: "decision_support"
 name: "Regulated Decision Support Profile"
@@ -23,7 +23,7 @@ lane_weights:
   responsibility: 0.40
 
 verdict_tier_thresholds:
-  block_escalate: 0.55
+  block_escalate: 0.70
   soft_correct: 0.35
   badge: 0.18
 

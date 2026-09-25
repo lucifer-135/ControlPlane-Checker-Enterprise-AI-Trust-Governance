@@ -37,6 +37,19 @@ export const PolicyProfilesTab: React.FC<PolicyProfilesTabProps> = ({
 }) => {
   const [viewMode, setViewMode] = useState<'visual' | 'yaml'>('visual');
   const [copied, setCopied] = useState<boolean>(false);
+  const [isResetting, setIsResetting] = useState<boolean>(false);
+  const [resetSuccess, setResetSuccess] = useState<boolean>(false);
+
+  const handleReset = async () => {
+    setIsResetting(true);
+    try {
+      await onResetProfiles();
+      setResetSuccess(true);
+      setTimeout(() => setResetSuccess(false), 2500);
+    } finally {
+      setIsResetting(false);
+    }
+  };
 
   const currentProfile = policyProfiles[activeUseCase];
 
@@ -163,12 +176,26 @@ export const PolicyProfilesTab: React.FC<PolicyProfilesTabProps> = ({
           </div>
 
           <button
-            onClick={onResetProfiles}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl glass-btn-secondary text-[#475467] hover:text-[#B42318] text-[13px] font-medium transition-colors cursor-pointer"
+            onClick={handleReset}
+            disabled={isResetting}
+            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[13px] font-medium transition-all cursor-pointer ${
+              resetSuccess
+                ? 'bg-[#ECFDF3] text-[#067647] border border-[#ABEFC6] shadow-xs'
+                : 'glass-btn-secondary text-[#475467] hover:text-[#B42318]'
+            } disabled:opacity-50`}
             title="Reset all policies to default values"
           >
-            <RotateCcw className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Reset</span>
+            {resetSuccess ? (
+              <>
+                <Check className="h-3.5 w-3.5 text-[#12B76A]" />
+                <span className="font-semibold text-[#067647]">Reset to Defaults!</span>
+              </>
+            ) : (
+              <>
+                <RotateCcw className={`h-3.5 w-3.5 ${isResetting ? 'animate-spin' : ''}`} />
+                <span className="hidden sm:inline">{isResetting ? 'Resetting...' : 'Reset'}</span>
+              </>
+            )}
           </button>
         </div>
       </div>
@@ -458,13 +485,13 @@ export const PolicyProfilesTab: React.FC<PolicyProfilesTabProps> = ({
           {/* Right Col: Runtime Governance & Ruleset Config */}
           <div className="space-y-6">
             {/* Geography & Regulatory Ruleset */}
-            <div className="glass-panel rounded-2xl p-6 space-y-4">
+            <div className="glass-panel rounded-2xl p-6 space-y-4 relative z-30">
               <div className="flex items-center gap-2 font-headline text-lg text-[#101828] font-semibold tracking-tight">
                 <Globe2 className="h-5 w-5 text-[#099250]" />
                 <span>Regulatory Jurisdiction</span>
               </div>
 
-              <div className="space-y-2">
+              <div className="space-y-2 relative z-40">
                 <GlassDropdown<GeographyRuleset>
                   id="ruleset-version-select"
                   label="Active ruleset version"
@@ -579,7 +606,7 @@ export const PolicyProfilesTab: React.FC<PolicyProfilesTabProps> = ({
             </div>
 
             {/* Profile Overview Card */}
-            <div className="glass-panel rounded-2xl p-6 text-xs space-y-2.5">
+            <div className="glass-panel rounded-2xl p-6 text-xs space-y-2.5 relative z-10">
               <span className="text-[13px] text-[#101828] font-semibold block">
                 Profile Architecture Summary
               </span>

@@ -182,3 +182,31 @@ describe('Cost Lane Evaluator (evaluateCostLane)', () => {
     expect(restoredResult.baseline_mean_tokens).toBeLessThan(1000);
   });
 });
+
+describe('Cost lane cutoff scaling', () => {
+  const baseline: QueryBaseline = {
+    use_case: 'support_bot',
+    query_type: 'fixed',
+    mean_tokens: 100,
+    stddev_tokens: 10,
+    mean_latency_ms: 100,
+    stddev_latency_ms: 10,
+    sample_size: 100,
+  };
+  const getter = () => baseline;
+
+  it('maps Z = cutoff to 0.5 risk, so a stricter cutoff raises risk', () => {
+    const usage = { prompt: 50, completion: 80, total: 130 }; // Z = 3
+    const lenient = evaluateCostLane(usage, 100, 'support_bot', 'fixed', 0, 3.0, getter);
+    const strict = evaluateCostLane(usage, 100, 'support_bot', 'fixed', 0, 1.5, getter);
+    expect(lenient.risk_score).toBeCloseTo(0.5, 3);
+    expect(strict.risk_score).toBeCloseTo(1.0, 3);
+    expect(lenient.is_outlier).toBe(true);
+  });
+
+  it('is unchanged (Z / 4) at the default cutoff of 2.0', () => {
+    const usage = { prompt: 50, completion: 60, total: 110 }; // Z = 1
+    const result = evaluateCostLane(usage, 100, 'support_bot', 'fixed', 0, 2.0, getter);
+    expect(result.risk_score).toBeCloseTo(0.25, 3);
+  });
+});

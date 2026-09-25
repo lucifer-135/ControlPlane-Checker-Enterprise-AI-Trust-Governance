@@ -79,3 +79,40 @@ describe('CircuitBreaker', () => {
     expect(breaker.canRequest()).toBe(true);
   });
 });
+
+describe('CircuitBreaker onTrip', () => {
+  it('fires exactly once per transition into OPEN', async () => {
+    let trips = 0;
+    const breaker = new CircuitBreaker({
+      failureThreshold: 2,
+      recoveryTimeoutMs: 50,
+      halfOpenMaxAttempts: 1,
+      onTrip: () => trips++,
+    });
+
+    breaker.recordFailure();
+    expect(trips).toBe(0);
+    breaker.recordFailure(); // CLOSED -> OPEN
+    breaker.recordFailure(); // already OPEN: no new trip
+    breaker.recordFailure();
+    expect(trips).toBe(1);
+
+    await new Promise((resolve) => setTimeout(resolve, 70));
+    expect(breaker.canRequest()).toBe(true); // HALF_OPEN probe
+    expect(breaker.isProbing()).toBe(true);
+    breaker.recordFailure(); // HALF_OPEN -> OPEN
+    expect(trips).toBe(2);
+  });
+
+  it('counts the transitioning request as the first half-open probe', async () => {
+    const breaker = new CircuitBreaker({
+      failureThreshold: 1,
+      recoveryTimeoutMs: 20,
+      halfOpenMaxAttempts: 1,
+    });
+    breaker.recordFailure();
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(breaker.canRequest()).toBe(true); // the single allowed probe
+    expect(breaker.canRequest()).toBe(false);
+  });
+});

@@ -27,6 +27,8 @@ export interface CircuitBreakerConfig {
   recoveryTimeoutMs: number;
   /** Max attempts allowed in HALF_OPEN state before deciding. */
   halfOpenMaxAttempts: number;
+  /** Invoked exactly once per transition into OPEN (CLOSED → OPEN or HALF_OPEN → OPEN). */
+  onTrip?: () => void;
 }
 
 export class CircuitBreaker {
@@ -41,7 +43,20 @@ export class CircuitBreaker {
       failureThreshold: config.failureThreshold ?? 5,
       recoveryTimeoutMs: config.recoveryTimeoutMs ?? 30000,
       halfOpenMaxAttempts: config.halfOpenMaxAttempts ?? 2,
+      onTrip: config.onTrip,
     };
+  }
+
+  private trip(): void {
+    const wasOpen = this.state === 'OPEN';
+    this.state = 'OPEN';
+    if (!wasOpen) {
+      try {
+        this.config.onTrip?.();
+      } catch {
+        // Metric/observer failures must never affect breaker state
+      }
+    }
   }
 
   /** Check if a request should be allowed through. */
@@ -52,7 +67,8 @@ export class CircuitBreaker {
       // Check if recovery timeout has elapsed
       if (Date.now() - this.lastFailureTime >= this.config.recoveryTimeoutMs) {
         this.state = 'HALF_OPEN';
-        this.halfOpenAttempts = 0;
+        // This request is the first probe
+        this.halfOpenAttempts = 1;
         return true;
       }
       return false;
@@ -85,13 +101,18 @@ export class CircuitBreaker {
 
     if (this.state === 'HALF_OPEN') {
       // Failed during probe — re-open
-      this.state = 'OPEN';
+      this.trip();
       return;
     }
 
-    if (this.consecutiveFailures >= this.config.failureThreshold) {
-      this.state = 'OPEN';
+    if (this.state === 'CLOSED' && this.consecutiveFailures >= this.config.failureThreshold) {
+      this.trip();
     }
+  }
+
+  /** True while in HALF_OPEN, i.e. the caller holds a bounded recovery probe. */
+  isProbing(): boolean {
+    return this.state === 'HALF_OPEN';
   }
 
   /** Get the current circuit state. */

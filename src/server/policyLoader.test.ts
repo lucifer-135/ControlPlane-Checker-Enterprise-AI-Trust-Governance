@@ -4,7 +4,16 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { parsePolicyYaml } from './policyLoader.js';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import {
+  parsePolicyYaml,
+  loadPoliciesFromDir,
+  writePolicyToFile,
+  DuplicatePolicyError,
+} from './policyLoader.js';
+import { DEFAULT_POLICY_PROFILES } from '../lib/policyProfiles.js';
 
 describe('PolicyLoader', () => {
   it('correctly parses Kubernetes-style CRD PolicyProfile spec', () => {
@@ -76,5 +85,58 @@ describe('PolicyLoader', () => {
     expect(parsePolicyYaml(null)).toBeNull();
     expect(parsePolicyYaml('')).toBeNull();
     expect(parsePolicyYaml(undefined)).toBeNull();
+  });
+});
+
+describe('PolicyLoader directory handling', () => {
+  function withTempDir(fn: (dir: string) => void) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cp-policy-loader-'));
+    try {
+      fn(dir);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  it('rejects two files defining the same use_case, naming both files', () => {
+    withTempDir((dir) => {
+      fs.writeFileSync(path.join(dir, 'b-support.yaml'), 'use_case: support_bot\nversion: "b"\n');
+      fs.writeFileSync(
+        path.join(dir, 'a-support.yaml'),
+        'apiVersion: governance.controlplane.io/v1alpha1\nkind: PolicyProfile\nmetadata:\n  name: support_bot\nspec: {}\n',
+      );
+      try {
+        loadPoliciesFromDir(dir);
+        expect.unreachable('expected DuplicatePolicyError');
+      } catch (err) {
+        expect(err).toBeInstanceOf(DuplicatePolicyError);
+        expect((err as DuplicatePolicyError).files).toEqual(['a-support.yaml', 'b-support.yaml']);
+      }
+    });
+  });
+
+  it('writes edits back to the file that already defines the use_case', () => {
+    withTempDir((dir) => {
+      fs.writeFileSync(path.join(dir, 'custom-name.yaml'), 'use_case: support_bot\n');
+      writePolicyToFile(
+        {
+          ...DEFAULT_POLICY_PROFILES.support_bot,
+          failMode: 'FAIL_CLOSED',
+          thresholds: { ...DEFAULT_POLICY_PROFILES.support_bot.thresholds, block_escalate: 0.33 },
+        },
+        dir,
+      );
+      expect(fs.existsSync(path.join(dir, 'support-bot.yaml'))).toBe(false);
+
+      const reloaded = loadPoliciesFromDir(dir);
+      expect(reloaded.support_bot.thresholds.block_escalate).toBe(0.33);
+      // fail mode round-trips through the flat YAML format
+      expect(reloaded.support_bot.failMode).toBe('FAIL_CLOSED');
+    });
+  });
+
+  it('keeps exactly one policy file per use case in the repository', () => {
+    const repoPolicies = path.resolve(process.cwd(), 'policies');
+    expect(() => loadPoliciesFromDir(repoPolicies)).not.toThrow();
   });
 });

@@ -1,30 +1,34 @@
-apiVersion: governance.controlplane.io/v1alpha1
-kind: PolicyProfile
-metadata:
-  name: decision_support
-  title: 'Regulated Decision Support Profile'
-  version: '3.1.0-strict'
-  description: 'Highest regulatory scrutiny (FINRA, ECOA, HIPAA). Pre-response blocking enabled for high-risk credit, loan, and insurance triage.'
-spec:
-  jurisdiction: US_HIPAA_FINRA
-  enactment:
-    default_mode: FAIL_CLOSED
-    max_pipeline_latency_budget_ms: 400
-    timeout_fallback: BLOCK
-  lanes:
-    performance:
-      min_groundedness: 0.70
-      confidently_wrong_action: BLOCK
-    responsibility:
-      pii_severity_cutoff: 0.15
-      toxicity_cutoff: 0.25
-    cost:
-      token_z_score_cutoff: 3.0
-  weights:
-    performance: 0.50
-    cost: 0.10
-    responsibility: 0.40
-  thresholds:
-    block_escalate: 0.55
-    soft_correct: 0.35
-    badge: 0.18
+# ControlPlane Checker Policy Profile
+# Generated: 2026-09-24T22:37:07.777Z
+version: "3.1.0-strict"
+use_case: "decision_support"
+name: "Regulated Decision Support Profile"
+description: "Highest regulatory scrutiny (FINRA, ECOA, HIPAA). Pre-response blocking enabled for high-risk credit, loan, and insurance triage."
+geography_ruleset: "US_HIPAA_FINRA"
+
+runtime_governance:
+  latency_budget_ms: 400
+  pre_response_blocking: true
+  fail_mode: "FAIL_CLOSED"
+  timeout_fallback: "BLOCK"
+
+active_lanes:
+  performance: true
+  cost: true
+  responsibility: true
+
+lane_weights:
+  performance: 0.50
+  cost: 0.10
+  responsibility: 0.40
+
+verdict_tier_thresholds:
+  block_escalate: 0.55
+  soft_correct: 0.35
+  badge: 0.18
+
+lane_cutoffs:
+  cost_z_score_cutoff: 3.0
+  pii_severity_cutoff: 0.15
+  hallucination_cutoff: 0.30
+  toxicity_cutoff: 0.25

@@ -6,3 +6,5 @@ package-lock.json
 data/
 scratch/
 README.pdf
+# Written at runtime by the policy writer (Policy Studio / PUT /api/policies)
+policies/

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   EvaluationResult,
   SpanHighlight,
@@ -35,11 +35,16 @@ import {
   Loader2,
   Cpu,
   Scale,
+  ShieldAlert,
 } from 'lucide-react';
 import type { JudgeProvider } from '../types';
+import { InteractionContextPanel } from './InteractionContextPanel';
 
 interface LiveFeedTabProps {
+  /** Replayable dataset; playback controls apply only to these. */
   interactions: SyntheticInteraction[];
+  /** Real gateway traffic; always visible regardless of replay position. */
+  liveInteractions?: SyntheticInteraction[];
   evaluations: Record<string, EvaluationResult>;
   onRunJudge: (interaction: SyntheticInteraction, provider?: JudgeProvider) => Promise<any>;
   activeUseCaseFilter: UseCaseId | 'ALL';
@@ -53,6 +58,7 @@ interface LiveFeedTabProps {
 
 export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
   interactions,
+  liveInteractions = [],
   evaluations,
   onRunJudge,
   activeUseCaseFilter,
@@ -148,8 +154,28 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
     }
   };
 
-  // Visible streamed interactions
-  const streamedInteractions = interactions.slice(0, streamIndex);
+  // Visible interactions: the replay window of the dataset, followed by every
+  // live gateway event (live traffic is never hidden by the replay position)
+  const streamedInteractions = useMemo(
+    () => [...interactions.slice(0, streamIndex), ...liveInteractions],
+    [interactions, streamIndex, liveInteractions],
+  );
+
+  // Live events that arrived since the operator last acknowledged the feed
+  const [seenLiveIds, setSeenLiveIds] = useState<Set<string>>(
+    () => new Set(liveInteractions.map((i) => i.id)),
+  );
+  const newLiveInteractions = liveInteractions.filter((i) => !seenLiveIds.has(i.id));
+
+  const handleShowNewLiveEvents = () => {
+    const target = newLiveInteractions[newLiveInteractions.length - 1];
+    setSeenLiveIds(new Set(liveInteractions.map((i) => i.id)));
+    if (target) {
+      document
+        .getElementById(`interaction-${target.id}`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  };
 
   // Filtered subset
   const filteredInteractions = streamedInteractions.filter((item) => {
@@ -323,7 +349,7 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
                 {totalStreamed}
               </span>
               <span className="font-mono text-xs text-[#667085] tnum">
-                / {interactions.length} interactions monitored
+                / {interactions.length + liveInteractions.length} interactions monitored
               </span>
             </div>
             <div className="h-5 w-px bg-slate-200 hidden sm:block"></div>
@@ -393,7 +419,7 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
       </div>
 
       {/* 2. Streaming Playback & Filter Controls Bar */}
-      <div className="glass-panel rounded-2xl p-5 space-y-4">
+      <div className="glass-panel rounded-2xl p-5 space-y-4 relative z-30">
         <div className="flex flex-wrap items-center justify-between gap-4">
           {/* Stream Player Controls */}
           <div className="flex flex-wrap items-center gap-2.5">
@@ -549,7 +575,7 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
         </div>
 
         {/* Filter Pills */}
-        <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-slate-200 text-xs">
+        <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-slate-200 text-xs relative z-30">
           {/* Use Case Tabs */}
           <span className="text-[#667085] font-medium text-xs flex items-center mr-1">
             <Filter className="h-3 w-3 mr-1 text-[#98A2B3]" /> Use case:
@@ -663,7 +689,23 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
       </div>
 
       {/* 3. Interaction Feed List */}
-      <div className="space-y-4">
+      <div className="space-y-4 relative z-10">
+        {newLiveInteractions.length > 0 && (
+          <div className="sticky top-4 z-20 flex justify-center pointer-events-none">
+            <button
+              id="btn-new-live-events"
+              onClick={handleShowNewLiveEvents}
+              className="pointer-events-auto flex items-center gap-2 px-4 py-2 rounded-full text-xs font-semibold bg-[#EFF6FF]/95 text-[#175CD3] border border-[#B2DDFF] shadow-md backdrop-blur-md hover:bg-[#D1E9FF] transition-all cursor-pointer"
+            >
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full rounded-full bg-[#2E90FA] opacity-60 animate-ping"></span>
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-[#2E90FA]"></span>
+              </span>
+              {newLiveInteractions.length} new live gateway{' '}
+              {newLiveInteractions.length === 1 ? 'event' : 'events'} · Jump to latest
+            </button>
+          </div>
+        )}
         {filteredInteractions.length === 0 ? (
           <div className="glass-panel rounded-2xl p-12 text-center">
             <Bot className="h-10 w-10 text-[#98A2B3] mx-auto mb-3" />
@@ -858,34 +900,8 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
 
                     {/* Dual Pane: User Input & Context vs AI Response */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                      {/* Left Pane: Prompt & Retrieved Context */}
-                      <div className="space-y-4">
-                        <div className="glass-inset rounded-xl p-4 space-y-2">
-                          <span className="text-[11px] text-[#667085] block font-medium">
-                            User prompt
-                          </span>
-                          <p className="text-sm text-[#101828] font-sans leading-relaxed">
-                            {item.prompt}
-                          </p>
-                        </div>
-
-                        <div className="glass-inset rounded-xl p-4 space-y-2">
-                          <div className="flex justify-between items-center gap-2">
-                            <span className="text-[11px] text-[#667085] font-medium">
-                              Retrieved context (governance source)
-                            </span>
-                            <span className="text-[10px] px-2 py-0.5 rounded-lg bg-[#F4F3FF] border border-[#D9D6FE] text-[#6941C6] font-medium whitespace-nowrap">
-                              {item.retrieved_context
-                                ? 'Vector RAG Context'
-                                : 'No Context / Unverified'}
-                            </span>
-                          </div>
-                          <p className="text-xs text-[#344054] leading-relaxed italic bg-white/90 p-3 rounded-lg border border-slate-200 font-sans">
-                            {item.retrieved_context ||
-                              '[No retrieval context attached. Evaluated against certainty heuristic.]'}
-                          </p>
-                        </div>
-                      </div>
+                      {/* Left Pane: System prompt, history, prompt & retrieved context */}
+                      <InteractionContextPanel item={item} />
 
                       {/* Right Pane: AI Response with Span Annotations */}
                       <div className="glass-inset rounded-xl p-4 flex flex-col justify-between space-y-4">
@@ -893,16 +909,40 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
                           <div className="flex justify-between items-center mb-2 gap-2">
                             <span className="text-[11px] text-[#667085] font-medium flex items-center gap-2">
                               AI model response
-                              {evalRes.verdict === 'BLOCK_ESCALATE' && (
+                              {evalRes.is_pre_response_blocked ? (
                                 <span className="text-[10px] font-semibold text-[#B42318] bg-[#FEF3F2] px-2 py-0.5 rounded-lg border border-[#FECDCA] whitespace-nowrap">
-                                  Withheld from user
+                                  Withheld from user (Pre-Response Block)
                                 </span>
-                              )}
+                              ) : evalRes.verdict === 'BLOCK_ESCALATE' ? (
+                                <span className="text-[10px] font-semibold text-[#B54708] bg-[#FFFAEB] px-2 py-0.5 rounded-lg border border-[#FEDF89] whitespace-nowrap">
+                                  Delivered · Post-Delivery Review
+                                </span>
+                              ) : null}
                             </span>
                             <span className="font-mono text-[10px] text-[#667085] tnum whitespace-nowrap">
                               {item.token_count.completion} tokens · {item.latency_ms}ms
                             </span>
                           </div>
+
+                          {evalRes.is_pre_response_blocked ? (
+                            <div className="mb-2.5 p-2.5 rounded-xl bg-[#FEF3F2] border border-[#FECDCA] text-[11px] text-[#B42318] flex items-center gap-2">
+                              <ShieldAlert className="h-4 w-4 shrink-0 text-[#D92D20]" />
+                              <span>
+                                <strong>Pre-Response Blocking Active:</strong> Upstream response was
+                                withheld from user and replaced with governance refusal. Below is
+                                the audited response.
+                              </span>
+                            </div>
+                          ) : evalRes.verdict === 'BLOCK_ESCALATE' ? (
+                            <div className="mb-2.5 p-2.5 rounded-xl bg-[#FFFAEB] border border-[#FEDF89] text-[11px] text-[#B54708] flex items-center gap-2">
+                              <ShieldAlert className="h-4 w-4 shrink-0 text-[#DC6803]" />
+                              <span>
+                                <strong>Pre-Response Blocking Inactive:</strong> Response was
+                                delivered to client and asynchronously queued for frontline human
+                                triage.
+                              </span>
+                            </div>
+                          ) : null}
 
                           <div className="bg-white/90 border border-slate-200 rounded-xl p-4 min-h-[100px] shadow-inner">
                             {renderHighlightedResponse(item.response, evalRes)}

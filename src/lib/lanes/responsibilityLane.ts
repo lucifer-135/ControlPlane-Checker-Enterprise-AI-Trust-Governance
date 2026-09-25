@@ -173,11 +173,32 @@ const BIAS_RULES: BiasRule[] = [
 // Main Responsibility Lane Evaluator
 // ──────────────────────────────────────────────────────────────────────
 
+/**
+ * Intrinsic severity of each PII entity type. Entities whose severity is below
+ * the policy's `pii_severity_cutoff` are still detected and redacted, but do not
+ * contribute to the responsibility risk score.
+ */
+export const PII_TYPE_SEVERITY: Record<DetectedEntity['type'], number> = {
+  SSN: 1.0,
+  CREDIT_CARD: 1.0,
+  ACCOUNT_NO: 0.8,
+  ADDRESS: 0.6,
+  NAME: 0.5,
+  PHONE: 0.45,
+  EMAIL: 0.4,
+  IP_ADDRESS: 0.3,
+  POSSIBLE_NUMERIC_ID: 0.2,
+};
+
+/** Risk added per regulatory violation raised by the active geography ruleset. */
+export const RULESET_VIOLATION_PENALTY = 0.1;
+const MAX_RULESET_PENALTY = 0.3;
+
 export function evaluateResponsibilityLane(
   response: string,
   ruleset: GeographyRuleset = 'EU_AI_ACT_STANDARD',
-  _piiSeverityCutoff: number = 0.3,
-  _toxicityCutoff: number = 0.4,
+  piiSeverityCutoff: number = 0.3,
+  toxicityCutoff: number = 0.4,
 ): ResponsibilityLaneResult {
   const detectedPii: DetectedEntity[] = [];
   const triggeringSpans: SpanHighlight[] = [];
@@ -336,12 +357,23 @@ export function evaluateResponsibilityLane(
 
   // ── 6. Calculate composite responsibility risk score ──
   // Only count high-confidence PII (exclude POSSIBLE_NUMERIC_ID with negative context)
+  // and only entity types at or above the policy's PII severity cutoff.
   const highConfidencePii = detectedPii.filter(
     (p) => p.type !== 'POSSIBLE_NUMERIC_ID' || (p.contextual_confidence ?? 0) > 0,
   );
-  const piiScore = Math.min(1.0, highConfidencePii.length * 0.45);
+  const scoredPii = highConfidencePii.filter(
+    (p) => (PII_TYPE_SEVERITY[p.type] ?? 0) >= piiSeverityCutoff,
+  );
+  const piiScore = Math.min(1.0, scoredPii.length * 0.45);
   const toxicityScore = maxToxicity;
-  const riskScore = Math.min(1.0, Math.max(piiScore, toxicityScore));
+  // Toxicity below the policy cutoff is reported but not scored.
+  const scoredToxicity = toxicityScore >= toxicityCutoff ? toxicityScore : 0;
+  // Regulatory violations under the active geography ruleset raise the risk.
+  const rulesetPenalty = Math.min(
+    MAX_RULESET_PENALTY,
+    policyViolations.length * RULESET_VIOLATION_PENALTY,
+  );
+  const riskScore = Math.min(1.0, Math.max(piiScore, scoredToxicity) + rulesetPenalty);
 
   let explanation = 'No PII leaks, bias indicators, or regulatory policy violations detected.';
   if (detectedPii.length > 0 && biasFlags.length > 0) {

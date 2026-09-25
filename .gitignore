@@ -92,3 +92,8 @@ data/*.db-journal
 models/
 *.gguf
 *.bin
+
+# Documentation
+HOW_IT_WORKS.md
+README.pdf
+readme.pdf

@@ -48,10 +48,24 @@ export function GlassDropdown<T extends string = string>({
 }: GlassDropdownProps<T>) {
   const [isOpen, setIsOpen] = useState(false);
   const [focusedIndex, setFocusedIndex] = useState(-1);
+  const [openUpwards, setOpenUpwards] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const listboxRef = useRef<HTMLUListElement>(null);
 
   const selectedOption = options.find((opt) => opt.value === value);
+
+  // Check available viewport space to open upwards if near bottom
+  useEffect(() => {
+    if (isOpen && containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      if (spaceBelow < 280 && rect.top > spaceBelow) {
+        setOpenUpwards(true);
+      } else {
+        setOpenUpwards(false);
+      }
+    }
+  }, [isOpen]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -168,7 +182,9 @@ export function GlassDropdown<T extends string = string>({
   return (
     <div
       ref={containerRef}
-      className={`relative inline-block ${fullWidth ? 'w-full' : ''} ${className}`}
+      className={`relative inline-block ${fullWidth ? 'w-full' : ''} ${className} ${
+        isOpen ? 'z-50' : 'z-auto'
+      }`}
     >
       {label && (
         <label
@@ -237,7 +253,11 @@ export function GlassDropdown<T extends string = string>({
       {/* Floating Glassmorphic Dropdown Menu */}
       {isOpen && (
         <div
-          className={`absolute ${align === 'right' ? 'right-0' : 'left-0'} z-50 mt-1.5 w-full min-w-[220px] max-w-[420px] bg-white/95 backdrop-blur-xl border border-slate-200/90 rounded-2xl shadow-[0_16px_36px_-6px_rgba(15,23,42,0.14),0_6px_16px_-4px_rgba(15,23,42,0.08),inset_0_1px_0_0_rgba(255,255,255,0.95)] animate-in fade-in-0 zoom-in-95 duration-150 overflow-hidden`}
+          className={`absolute ${align === 'right' ? 'right-0' : 'left-0'} ${
+            openUpwards ? 'bottom-full mb-1.5 origin-bottom' : 'top-full mt-1.5 origin-top'
+          } z-50 ${
+            fullWidth ? 'w-full min-w-full' : 'min-w-[220px] max-w-[420px]'
+          } bg-white/95 backdrop-blur-xl border border-slate-200/90 rounded-2xl shadow-[0_16px_36px_-6px_rgba(15,23,42,0.14),0_6px_16px_-4px_rgba(15,23,42,0.08),inset_0_1px_0_0_rgba(255,255,255,0.95)] animate-in fade-in-0 zoom-in-95 duration-150 overflow-hidden`}
         >
           <ul
             ref={listboxRef}

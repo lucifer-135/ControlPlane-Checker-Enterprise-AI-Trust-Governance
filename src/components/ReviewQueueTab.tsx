@@ -26,17 +26,14 @@ import {
   ClipboardList,
   ChevronDown,
   ChevronUp,
-  Trash2,
-  RotateCcw,
 } from 'lucide-react';
+import { InteractionContextPanel } from './InteractionContextPanel';
 
 interface ReviewQueueTabProps {
   interactions: SyntheticInteraction[];
   evaluations: Record<string, EvaluationResult>;
   reviewDecisions: ReviewDecision[];
   onReviewDecision: (decision: ReviewDecision) => void;
-  onDeleteDecision?: (decisionId: string) => void;
-  onResetDecisions?: () => void;
   selectedReviewId?: string | null;
   onClearSelectedReviewId?: () => void;
 }
@@ -46,8 +43,6 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
   evaluations,
   reviewDecisions,
   onReviewDecision,
-  onDeleteDecision,
-  onResetDecisions,
   selectedReviewId,
   onClearSelectedReviewId,
 }) => {
@@ -57,7 +52,6 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
-  const [showResetConfirm, setShowResetConfirm] = useState<boolean>(false);
   const [violationFilter, setViolationFilter] = useState<string>('ALL');
 
   // Auto-expand and scroll to selected ID when navigated from other tabs
@@ -127,7 +121,7 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
       id: `dec-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
       interaction_id: item.id,
       reviewed_at: new Date().toISOString(),
-      reviewer: 'Meera S. (Frontline Compliance Lead)',
+      reviewer: 'Recording…', // replaced by the server with the authenticated identity
       action: 'CONFIRM_BLOCK',
       notes:
         reviewNotes[item.id] || 'Confirmed high-risk violation; output withheld from end-user.',
@@ -143,7 +137,7 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
       id: `dec-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
       interaction_id: item.id,
       reviewed_at: new Date().toISOString(),
-      reviewer: 'Meera S. (Frontline Compliance Lead)',
+      reviewer: 'Recording…', // replaced by the server with the authenticated identity
       action: 'OVERRIDE_ALLOW',
       notes:
         reviewNotes[item.id] || 'Reviewer manual override: safe in context / false positive alert.',
@@ -164,7 +158,7 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
       id: `dec-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
       interaction_id: item.id,
       reviewed_at: new Date().toISOString(),
-      reviewer: 'Meera S. (Frontline Compliance Lead)',
+      reviewer: 'Recording…', // replaced by the server with the authenticated identity
       action: 'EDIT_ALLOW',
       notes:
         reviewNotes[item.id] || 'Sanitized response approved (PII redacted / claim corrected).',
@@ -324,20 +318,8 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
           <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/10 rounded-full blur-2xl pointer-events-none" />
           <div className="flex items-center justify-between">
             <span className="text-[13px] text-[#475467] font-medium">Review feedback metrics</span>
-            <div className="flex items-center space-x-2">
-              {totalReviewed > 0 && onResetDecisions && (
-                <button
-                  onClick={() => setShowResetConfirm(true)}
-                  className="text-[11px] text-rose-600 hover:text-rose-800 font-medium flex items-center space-x-1 hover:underline cursor-pointer"
-                  title="Reset all recorded decisions"
-                >
-                  <RotateCcw className="h-3 w-3" />
-                  <span>Reset All</span>
-                </button>
-              )}
-              <div className="p-1.5 rounded-xl bg-[#EFF6FF] border border-[#B2DDFF]">
-                <History className="h-4 w-4 text-[#2E90FA]" />
-              </div>
+            <div className="p-1.5 rounded-xl bg-[#EFF6FF] border border-[#B2DDFF]">
+              <History className="h-4 w-4 text-[#2E90FA]" />
             </div>
           </div>
           <div className="my-2 grid grid-cols-2 gap-4">
@@ -383,7 +365,7 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
 
       {/* 2. Pending Escalated Items List */}
       <div className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3 relative z-30">
           <div className="flex items-center gap-3">
             <h3 className="font-headline text-lg text-[#101828] font-semibold tracking-tight flex items-center">
               <ClipboardList className="h-5 w-5 text-[#D92D20] mr-2" />
@@ -596,23 +578,11 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
 
                     {/* Dual Inspection: Prompt + Context vs Response */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 text-xs">
-                      {/* Left: Prompt & Context */}
-                      <div className="space-y-3">
-                        <div className="glass-inset rounded-xl p-4">
-                          <span className="text-[11px] text-[#667085] block mb-1.5 font-medium">
-                            User prompt
-                          </span>
-                          <p className="text-[#344054] text-sm font-sans">{item.prompt}</p>
-                        </div>
-                        <div className="glass-inset rounded-xl p-4">
-                          <span className="text-[11px] text-[#667085] block mb-1.5 font-medium">
-                            Retrieved context (knowledge base)
-                          </span>
-                          <p className="text-[#475467] italic leading-relaxed text-xs font-sans">
-                            {item.retrieved_context || '[No context retrieved]'}
-                          </p>
-                        </div>
-                      </div>
+                      {/* Left: System prompt, history, prompt & retrieved context */}
+                      <InteractionContextPanel
+                        item={item}
+                        contextLabel="Retrieved context (knowledge base)"
+                      />
 
                       {/* Right: AI Response or Editor */}
                       <div className="space-y-3">
@@ -751,45 +721,16 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
 
       {/* 3. Decision Audit Log Table */}
       <div className="glass-panel rounded-2xl p-6 space-y-4">
-        {showResetConfirm && (
-          <div className="p-4 rounded-xl bg-rose-50/90 border border-rose-200 text-rose-900 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2 duration-150">
-            <div className="flex items-center space-x-2.5">
-              <AlertTriangle className="h-5 w-5 text-rose-600 shrink-0" />
-              <p className="text-xs sm:text-sm font-medium">
-                Reset all <strong className="font-semibold">{reviewDecisions.length}</strong>{' '}
-                recorded decisions? All triaged items will immediately return to the active review
-                queue.
-              </p>
-            </div>
-            <div className="flex items-center space-x-2 shrink-0">
-              <button
-                onClick={() => {
-                  onResetDecisions?.();
-                  setShowResetConfirm(false);
-                }}
-                className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 transition-colors shadow-xs cursor-pointer active:scale-95"
-              >
-                Yes, Reset All
-              </button>
-              <button
-                onClick={() => setShowResetConfirm(false)}
-                className="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 transition-colors cursor-pointer"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
-
         <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-200 pb-3 gap-3">
-          <h3 className="font-headline text-lg text-[#101828] font-semibold tracking-tight flex items-center">
-            <History className="h-5 w-5 text-[#2E90FA] mr-2.5" />
-            Review Decision Audit Trail
-          </h3>
-          {/* <h3 className="font-headline text-lg text-[#101828] font-semibold tracking-tight flex items-center">
-            <History className="h-5 w-5 text-[#2E90FA] mr-2.5" />
-            Append-Only Review Decision Audit Trail (FR-20 / FR-25)
-          </h3> */}
+          <div className="flex items-center gap-2.5">
+            <h3 className="font-headline text-lg text-[#101828] font-semibold tracking-tight flex items-center">
+              <History className="h-5 w-5 text-[#2E90FA] mr-2.5" />
+              Review Decision Audit Trail
+            </h3>
+            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold bg-[#ECFDF3] text-[#067647] border border-[#ABEFC6]">
+              Append-Only
+            </span>
+          </div>
           <div className="flex items-center space-x-3">
             <span className="text-xs text-[#667085] whitespace-nowrap font-medium">
               <span className="font-mono tnum text-[#475467] font-semibold">
@@ -797,16 +738,6 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
               </span>{' '}
               recorded decisions
             </span>
-            {reviewDecisions.length > 0 && onResetDecisions && !showResetConfirm && (
-              <button
-                onClick={() => setShowResetConfirm(true)}
-                className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition-all cursor-pointer shadow-xs active:scale-95"
-                title="Reset all recorded review decisions"
-              >
-                <RotateCcw className="h-3.5 w-3.5" />
-                <span>Reset Decisions</span>
-              </button>
-            )}
           </div>
         </div>
 
@@ -826,7 +757,6 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
                   <th className="py-3 px-4">Action</th>
                   <th className="py-3 px-4">Verdict Shift</th>
                   <th className="py-3 px-4">Notes</th>
-                  {onDeleteDecision && <th className="py-3 px-4 text-right">Actions</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 text-xs">
@@ -864,18 +794,6 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
                       </div>
                     </td>
                     <td className="py-3 px-4 text-[#475467] max-w-xs truncate">{d.notes}</td>
-                    {onDeleteDecision && (
-                      <td className="py-3 px-4 text-right">
-                        <button
-                          onClick={() => onDeleteDecision(d.id)}
-                          className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-[11px] font-medium text-slate-500 hover:text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-all cursor-pointer"
-                          title="Delete decision & return interaction to review queue"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                          <span className="hidden sm:inline">Delete</span>
-                        </button>
-                      </td>
-                    )}
                   </tr>
                 ))}
               </tbody>

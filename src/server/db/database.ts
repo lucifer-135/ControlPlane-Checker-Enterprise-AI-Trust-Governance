@@ -7,9 +7,11 @@
  * Database Adapter — Embedded SQLite with better-sqlite3
  *
  * Provides thread-safe, synchronous local storage for:
- * - Tamper-evident chained audit records
- * - Human-in-the-lead (HITL) review adjudications
- * - Multi-tenant API keys and RBAC
+ * - Tamper-evident chained audit records (append-only, tenant-bound)
+ * - Human-in-the-lead (HITL) review adjudications (append-only, tenant-bound)
+ * - Multi-tenant API keys and RBAC roles
+ * - Durable gateway escalations awaiting review
+ * - Rolling baseline tracker snapshots
  * - Cross-turn session risk state
  */
 
@@ -23,6 +25,8 @@ import {
   type StoredAuditRecord,
   type AuditRecordPayload,
 } from './auditChain.js';
+import { TABLES_SQL, COLUMN_MIGRATIONS, POST_MIGRATION_SQL } from './schema.js';
+import { DEMO_API_KEY, getBootstrapAdminKey, isDemoKeyAllowed } from '../config.js';
 import type {
   EvaluationResult,
   ReviewDecision,
@@ -34,6 +38,23 @@ let db: Database.Database | null = null;
 
 const DEFAULT_DB_DIR = path.resolve(process.cwd(), 'data');
 const DEFAULT_DB_PATH = path.join(DEFAULT_DB_DIR, 'controlplane.db');
+
+/** CONTROLPLANE_DB_PATH overrides the on-disk location (tests use ':memory:'). */
+function resolveDbPath(): string {
+  return process.env.CONTROLPLANE_DB_PATH || DEFAULT_DB_PATH;
+}
+
+/** Restricts a query to one org, and optionally one workspace within it. */
+export interface TenantFilter {
+  orgId: string;
+  workspaceId?: string;
+}
+
+/** Tenant stamp written onto audit records and review decisions. */
+export interface TenantStamp {
+  orgId: string;
+  workspaceId: string;
+}
 
 export function getDb(): Database.Database {
   if (!db) {
@@ -53,7 +74,7 @@ export function closeDatabase(): void {
   }
 }
 
-export function initDatabase(dbPath: string = DEFAULT_DB_PATH): Database.Database {
+export function initDatabase(dbPath: string = resolveDbPath()): Database.Database {
   if (db) {
     try {
       db.close();
@@ -63,113 +84,114 @@ export function initDatabase(dbPath: string = DEFAULT_DB_PATH): Database.Databas
     db = null;
   }
 
-  const dir = path.dirname(dbPath);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
+  if (dbPath !== ':memory:') {
+    const dir = path.dirname(dbPath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
   }
 
   db = new Database(dbPath);
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
 
-  // Load and apply schema
-  const candidatePaths = [
-    path.resolve(process.cwd(), 'src/server/db/schema.sql'),
-    path.resolve(process.cwd(), 'schema.sql'),
-  ];
-  let schemaSql = '';
-  for (const candidate of candidatePaths) {
-    if (fs.existsSync(candidate)) {
-      schemaSql = fs.readFileSync(candidate, 'utf-8');
-      break;
-    }
-  }
-  if (!schemaSql) {
-    // Fallback schema definition
-    schemaSql = `
-      CREATE TABLE IF NOT EXISTS audit_log (
-        id TEXT PRIMARY KEY,
-        interaction_id TEXT NOT NULL,
-        timestamp TEXT NOT NULL,
-        request_hash TEXT NOT NULL,
-        response_hash TEXT NOT NULL,
-        verdict TEXT NOT NULL,
-        composite_risk_score REAL NOT NULL,
-        session_risk REAL NOT NULL,
-        performance_json TEXT,
-        cost_json TEXT,
-        responsibility_json TEXT,
-        policy_version TEXT,
-        prev_log_hash TEXT,
-        log_hmac TEXT NOT NULL,
-        created_at TEXT DEFAULT (datetime('now'))
-      );
-      CREATE INDEX IF NOT EXISTS idx_audit_log_interaction_id ON audit_log(interaction_id);
-      CREATE INDEX IF NOT EXISTS idx_audit_log_timestamp ON audit_log(timestamp);
-
-      CREATE TABLE IF NOT EXISTS review_decisions (
-        id TEXT PRIMARY KEY,
-        interaction_id TEXT NOT NULL,
-        reviewer TEXT NOT NULL,
-        action TEXT NOT NULL,
-        notes TEXT,
-        edited_response TEXT,
-        original_verdict TEXT,
-        new_verdict TEXT,
-        primary_trigger_lane TEXT,
-        reviewed_at TEXT NOT NULL,
-        created_at TEXT DEFAULT (datetime('now'))
-      );
-      CREATE INDEX IF NOT EXISTS idx_review_decisions_interaction ON review_decisions(interaction_id);
-
-      CREATE TABLE IF NOT EXISTS api_keys (
-        key_hash TEXT PRIMARY KEY,
-        org_id TEXT NOT NULL,
-        workspace_id TEXT,
-        description TEXT,
-        policy_profile TEXT DEFAULT 'support_bot',
-        rate_limit_rpm INTEGER DEFAULT 100,
-        is_active INTEGER DEFAULT 1,
-        created_at TEXT DEFAULT (datetime('now'))
-      );
-
-      CREATE TABLE IF NOT EXISTS session_state (
-        session_id TEXT PRIMARY KEY,
-        state_json TEXT NOT NULL,
-        updated_at TEXT DEFAULT (datetime('now'))
-      );
-    `;
-  }
-
-  db.exec(schemaSql);
+  db.exec(TABLES_SQL);
+  applyColumnMigrations(db);
+  db.exec(POST_MIGRATION_SQL);
   console.log(`[Database] SQLite database initialized at: ${dbPath}`);
 
-  // Seed default admin API key if table empty
-  seedDefaultApiKey();
+  seedApiKeys();
 
   return db;
 }
 
-function seedDefaultApiKey(): void {
-  const countStmt = db!.prepare('SELECT COUNT(*) as count FROM api_keys');
-  const result = countStmt.get() as { count: number };
-  if (result.count === 0) {
-    const defaultKey = 'cp_live_default_admin_key_2026';
-    const keyHash = crypto.createHash('sha256').update(defaultKey).digest('hex');
-    const insert = db!.prepare(`
-      INSERT INTO api_keys (key_hash, org_id, workspace_id, description, policy_profile, rate_limit_rpm, is_active)
-      VALUES (?, ?, ?, ?, ?, ?, 1)
-    `);
-    insert.run(
-      keyHash,
-      'org_default',
-      'ws_production',
-      'Default Seed Admin Key',
-      'support_bot',
-      500,
-    );
-    console.log(`[Database] Seeded default API key: ${defaultKey}`);
+function applyColumnMigrations(database: Database.Database): void {
+  for (const { table, column, definition } of COLUMN_MIGRATIONS) {
+    const columns = database.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+    if (!columns.some((c) => c.name === column)) {
+      database.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+      console.log(`[Database] Migrated ${table}: added column ${column}`);
+    }
   }
+}
+
+function hashApiKey(rawKey: string): string {
+  return crypto.createHash('sha256').update(rawKey).digest('hex');
+}
+
+function seedApiKeys(): void {
+  const demoHash = hashApiKey(DEMO_API_KEY);
+
+  if (isDemoKeyAllowed()) {
+    const existing = db!.prepare('SELECT key_hash FROM api_keys WHERE key_hash = ?').get(demoHash);
+    const { count } = db!.prepare('SELECT COUNT(*) as count FROM api_keys').get() as {
+      count: number;
+    };
+    if (existing) {
+      db!
+        .prepare("UPDATE api_keys SET role = 'admin', is_active = 1 WHERE key_hash = ?")
+        .run(demoHash);
+    } else if (count === 0) {
+      db!
+        .prepare(
+          `INSERT INTO api_keys (key_hash, org_id, workspace_id, description, policy_profile, rate_limit_rpm, is_active, role)
+         VALUES (?, ?, ?, ?, ?, ?, 1, 'admin')`,
+        )
+        .run(
+          demoHash,
+          'org_default',
+          'ws_production',
+          'Default Seed Admin Key (dev only)',
+          'support_bot',
+          500,
+        );
+      console.log(`[Database] Seeded local-dev admin API key: ${DEMO_API_KEY}`);
+    }
+  } else {
+    const result = db!
+      .prepare('UPDATE api_keys SET is_active = 0 WHERE key_hash = ? AND is_active = 1')
+      .run(demoHash);
+    if (result.changes > 0) {
+      console.warn(
+        '[Database] Disabled the hard-coded demo API key (not permitted outside dev mode)',
+      );
+    }
+  }
+
+  const bootstrapKey = getBootstrapAdminKey();
+  if (bootstrapKey) {
+    const inserted = db!
+      .prepare(
+        `INSERT OR IGNORE INTO api_keys (key_hash, org_id, workspace_id, description, policy_profile, rate_limit_rpm, is_active, role)
+         VALUES (?, ?, ?, ?, ?, ?, 1, 'admin')`,
+      )
+      .run(
+        hashApiKey(bootstrapKey),
+        process.env.CONTROLPLANE_BOOTSTRAP_ORG_ID || 'org_default',
+        process.env.CONTROLPLANE_BOOTSTRAP_WORKSPACE_ID || 'ws_production',
+        'Bootstrap Admin Key (CONTROLPLANE_BOOTSTRAP_ADMIN_KEY)',
+        'support_bot',
+        500,
+      );
+    if (inserted.changes > 0) {
+      console.log('[Database] Registered bootstrap admin API key from environment');
+    }
+  }
+}
+
+function tenantWhere(
+  filter: TenantFilter | undefined,
+  alias = '',
+): { sql: string; params: string[] } {
+  if (!filter) return { sql: '', params: [] };
+  const prefix = alias ? `${alias}.` : '';
+  if (filter.workspaceId) {
+    return {
+      sql: `${prefix}org_id = ? AND ${prefix}workspace_id = ?`,
+      params: [filter.orgId, filter.workspaceId],
+    };
+  }
+  return { sql: `${prefix}org_id = ?`, params: [filter.orgId] };
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -183,14 +205,23 @@ export function getLatestAuditHmac(): string | null {
   return row ? row.log_hmac : null;
 }
 
+export interface InsertAuditOptions {
+  tenant?: TenantStamp | null;
+  requestPrompt?: string;
+  responseText?: string;
+}
+
 export function insertAuditLog(
   interaction: SyntheticInteraction,
   evaluation: EvaluationResult,
-  requestPrompt: string = interaction.prompt,
-  responseText: string = interaction.response,
+  options: InsertAuditOptions = {},
 ): StoredAuditRecord {
+  const requestPrompt = options.requestPrompt ?? interaction.prompt;
+  const responseText = options.responseText ?? interaction.response;
+  const tenant = options.tenant ?? null;
+
   const prevHmac = getLatestAuditHmac();
-  const id = `audit-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  const id = `audit-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
   const timestamp = new Date().toISOString();
   const requestHash = hashPayload(requestPrompt);
   const responseHash = hashPayload(responseText);
@@ -206,6 +237,8 @@ export function insertAuditLog(
     session_risk: evaluation.session_accumulated_risk,
     policy_version: evaluation.policy_profile_version,
     prev_log_hash: prevHmac,
+    org_id: tenant?.orgId ?? null,
+    workspace_id: tenant?.workspaceId ?? null,
   };
 
   const logHmac = computeRecordHMAC(payload);
@@ -214,8 +247,9 @@ export function insertAuditLog(
     INSERT INTO audit_log (
       id, interaction_id, timestamp, request_hash, response_hash,
       verdict, composite_risk_score, session_risk, performance_json,
-      cost_json, responsibility_json, policy_version, prev_log_hash, log_hmac
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      cost_json, responsibility_json, policy_version, prev_log_hash, log_hmac,
+      org_id, workspace_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   insert.run(
@@ -233,6 +267,8 @@ export function insertAuditLog(
     evaluation.policy_profile_version,
     prevHmac,
     logHmac,
+    payload.org_id,
+    payload.workspace_id,
   );
 
   return {
@@ -245,15 +281,17 @@ export function insertAuditLog(
   };
 }
 
-export function getAuditLogs(limit: number = 50, offset: number = 0): StoredAuditRecord[] {
-  const rows = getDb()
+export function getAuditLogs(
+  limit: number = 50,
+  offset: number = 0,
+  filter?: TenantFilter,
+): StoredAuditRecord[] {
+  const where = tenantWhere(filter);
+  return getDb()
     .prepare(
-      `
-    SELECT * FROM audit_log ORDER BY rowid DESC LIMIT ? OFFSET ?
-  `,
+      `SELECT * FROM audit_log ${where.sql ? `WHERE ${where.sql}` : ''} ORDER BY rowid DESC LIMIT ? OFFSET ?`,
     )
-    .all(limit, offset) as StoredAuditRecord[];
-  return rows;
+    .all(...where.params, limit, offset) as StoredAuditRecord[];
 }
 
 export function getAllAuditLogsForVerification(): StoredAuditRecord[] {
@@ -262,55 +300,163 @@ export function getAllAuditLogsForVerification(): StoredAuditRecord[] {
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// Review Decisions (HITL Queue)
+// Review Decisions (HITL Queue) — append-only
 // ──────────────────────────────────────────────────────────────────────
 
-export function insertReviewDecision(decision: ReviewDecision): void {
+export class DuplicateReviewDecisionError extends Error {
+  constructor(id: string) {
+    super(`Review decision '${id}' already exists; decisions are append-only`);
+    this.name = 'DuplicateReviewDecisionError';
+  }
+}
+
+/**
+ * Appends a review decision. Existing decisions can never be replaced or deleted
+ * (SQLite triggers enforce this); a correction is recorded as a new decision for
+ * the same interaction, and the most recent decision is the effective one.
+ */
+export function insertReviewDecision(
+  decision: ReviewDecision,
+  tenant: TenantStamp | null = null,
+): void {
   const insert = getDb().prepare(`
-    INSERT OR REPLACE INTO review_decisions (
+    INSERT INTO review_decisions (
       id, interaction_id, reviewer, action, notes, edited_response,
-      original_verdict, new_verdict, primary_trigger_lane, reviewed_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      original_verdict, new_verdict, primary_trigger_lane, reviewed_at,
+      org_id, workspace_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
-  insert.run(
-    decision.id,
-    decision.interaction_id,
-    decision.reviewer,
-    decision.action,
-    decision.notes,
-    decision.edited_response || null,
-    decision.original_verdict,
-    decision.new_verdict,
-    decision.primary_trigger_lane,
-    decision.reviewed_at,
-  );
-}
-
-export function getReviewDecisions(interactionId?: string): ReviewDecision[] {
-  if (interactionId) {
-    return getDb()
-      .prepare('SELECT * FROM review_decisions WHERE interaction_id = ? ORDER BY rowid DESC')
-      .all(interactionId) as ReviewDecision[];
+  try {
+    insert.run(
+      decision.id,
+      decision.interaction_id,
+      decision.reviewer,
+      decision.action,
+      decision.notes,
+      decision.edited_response || null,
+      decision.original_verdict,
+      decision.new_verdict,
+      decision.primary_trigger_lane,
+      decision.reviewed_at,
+      tenant?.orgId ?? null,
+      tenant?.workspaceId ?? null,
+    );
+  } catch (err: any) {
+    if (err?.code === 'SQLITE_CONSTRAINT_PRIMARYKEY' || err?.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+      throw new DuplicateReviewDecisionError(decision.id);
+    }
+    throw err;
   }
-  return getDb()
-    .prepare('SELECT * FROM review_decisions ORDER BY rowid DESC')
-    .all() as ReviewDecision[];
 }
 
-export function deleteReviewDecision(id: string): boolean {
-  const result = getDb().prepare('DELETE FROM review_decisions WHERE id = ?').run(id);
-  return result.changes > 0;
+export function getReviewDecisions(
+  interactionId?: string,
+  filter?: TenantFilter,
+): ReviewDecision[] {
+  const clauses: string[] = [];
+  const params: string[] = [];
+  if (interactionId) {
+    clauses.push('interaction_id = ?');
+    params.push(interactionId);
+  }
+  const where = tenantWhere(filter);
+  if (where.sql) {
+    clauses.push(where.sql);
+    params.push(...where.params);
+  }
+  const rows = getDb()
+    .prepare(
+      `SELECT id, interaction_id, reviewer, action, notes, edited_response, original_verdict,
+              new_verdict, primary_trigger_lane, reviewed_at
+       FROM review_decisions ${clauses.length ? `WHERE ${clauses.join(' AND ')}` : ''}
+       ORDER BY rowid DESC`,
+    )
+    .all(...params) as (ReviewDecision & { edited_response: string | null })[];
+  return rows.map((r) => {
+    const { edited_response, ...rest } = r;
+    return edited_response ? { ...rest, edited_response } : rest;
+  });
 }
 
-export function clearReviewDecisions(): number {
-  const result = getDb().prepare('DELETE FROM review_decisions').run();
-  return result.changes;
+// ──────────────────────────────────────────────────────────────────────
+// Gateway Escalations (durable review queue input)
+// ──────────────────────────────────────────────────────────────────────
+
+export function insertGatewayEscalation(
+  interactionId: string,
+  tenant: TenantStamp,
+  eventJson: string,
+): void {
+  getDb()
+    .prepare(
+      `INSERT OR IGNORE INTO gateway_escalations (interaction_id, org_id, workspace_id, event_json)
+       VALUES (?, ?, ?, ?)`,
+    )
+    .run(interactionId, tenant.orgId, tenant.workspaceId, eventJson);
+}
+
+/**
+ * Returns stored escalations that have no review decision yet (oldest first
+ * within the returned window of most recent items).
+ */
+export function getPendingGatewayEscalations(limit: number = 100, filter?: TenantFilter): string[] {
+  const where = tenantWhere(filter, 'e');
+  const rows = getDb()
+    .prepare(
+      `SELECT e.event_json FROM gateway_escalations e
+       WHERE NOT EXISTS (SELECT 1 FROM review_decisions r WHERE r.interaction_id = e.interaction_id)
+       ${where.sql ? `AND ${where.sql}` : ''}
+       ORDER BY e.rowid DESC LIMIT ?`,
+    )
+    .all(...where.params, limit) as { event_json: string }[];
+  return rows.map((r) => r.event_json).reverse();
+}
+
+export function getGatewayEscalationEvent(interactionId: string): string | null {
+  const row = getDb()
+    .prepare('SELECT event_json FROM gateway_escalations WHERE interaction_id = ?')
+    .get(interactionId) as { event_json: string } | undefined;
+  return row ? row.event_json : null;
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Rolling Baseline Snapshots
+// ──────────────────────────────────────────────────────────────────────
+
+export function saveBaselineState(schemaVersion: number, stateJson: string): void {
+  getDb()
+    .prepare(
+      `INSERT INTO baseline_state (id, schema_version, state_json, updated_at)
+       VALUES (1, ?, ?, datetime('now'))
+       ON CONFLICT(id) DO UPDATE SET
+         schema_version = excluded.schema_version,
+         state_json = excluded.state_json,
+         updated_at = datetime('now')`,
+    )
+    .run(schemaVersion, stateJson);
+}
+
+export function loadBaselineState(): { schemaVersion: number; stateJson: string } | null {
+  const row = getDb()
+    .prepare('SELECT schema_version, state_json FROM baseline_state WHERE id = 1')
+    .get() as { schema_version: number; state_json: string } | undefined;
+  return row ? { schemaVersion: row.schema_version, stateJson: row.state_json } : null;
 }
 
 // ──────────────────────────────────────────────────────────────────────
 // API Keys & Multi-Tenancy
 // ──────────────────────────────────────────────────────────────────────
+
+/**
+ * RBAC roles, lowest to highest privilege:
+ * - service:  may call the proxy and evaluation endpoints only
+ * - viewer:   may also read events, audit logs, decisions, policies (own tenant)
+ * - reviewer: may also record review decisions (own tenant)
+ * - admin:    may also change policies, baselines, and create keys (own org)
+ */
+export type ApiKeyRole = 'service' | 'viewer' | 'reviewer' | 'admin';
+export const API_KEY_ROLES: ApiKeyRole[] = ['service', 'viewer', 'reviewer', 'admin'];
 
 export interface StoredApiKey {
   key_hash: string;
@@ -320,15 +466,19 @@ export interface StoredApiKey {
   policy_profile: string;
   rate_limit_rpm: number;
   is_active: number;
+  role: ApiKeyRole;
   created_at: string;
 }
 
 export function getApiKeyBySecret(rawKey: string): StoredApiKey | null {
-  const hash = crypto.createHash('sha256').update(rawKey).digest('hex');
+  if (rawKey === DEMO_API_KEY && !isDemoKeyAllowed()) {
+    return null;
+  }
   const row = getDb()
     .prepare('SELECT * FROM api_keys WHERE key_hash = ? AND is_active = 1')
-    .get(hash) as StoredApiKey | undefined;
-  return row || null;
+    .get(hashApiKey(rawKey)) as StoredApiKey | undefined;
+  if (!row) return null;
+  return { ...row, role: API_KEY_ROLES.includes(row.role) ? row.role : 'service' };
 }
 
 export function createNewApiKey(
@@ -337,15 +487,16 @@ export function createNewApiKey(
   description: string = '',
   policyProfile: string = 'support_bot',
   rpm: number = 100,
+  role: ApiKeyRole = 'service',
 ): { rawKey: string; keyInfo: StoredApiKey } {
   const rawSecret = `cp_live_${crypto.randomBytes(24).toString('hex')}`;
-  const keyHash = crypto.createHash('sha256').update(rawSecret).digest('hex');
+  const keyHash = hashApiKey(rawSecret);
 
   const insert = getDb().prepare(`
-    INSERT INTO api_keys (key_hash, org_id, workspace_id, description, policy_profile, rate_limit_rpm, is_active)
-    VALUES (?, ?, ?, ?, ?, ?, 1)
+    INSERT INTO api_keys (key_hash, org_id, workspace_id, description, policy_profile, rate_limit_rpm, is_active, role)
+    VALUES (?, ?, ?, ?, ?, ?, 1, ?)
   `);
-  insert.run(keyHash, orgId, workspaceId, description, policyProfile, rpm);
+  insert.run(keyHash, orgId, workspaceId, description, policyProfile, rpm, role);
 
   return {
     rawKey: rawSecret,
@@ -357,6 +508,7 @@ export function createNewApiKey(
       policy_profile: policyProfile,
       rate_limit_rpm: rpm,
       is_active: 1,
+      role,
       created_at: new Date().toISOString(),
     },
   };

@@ -150,8 +150,13 @@ export function recordSimulatedRequest(apiKey: string, count: number = 1): void 
   }
 }
 
-export function resetRateLimits(): void {
-  rateLimitWindows.clear();
+/** Clears one rate-limit bucket, or every bucket when no key is given. */
+export function resetRateLimits(apiKey?: string): void {
+  if (apiKey) {
+    rateLimitWindows.delete(apiKey);
+  } else {
+    rateLimitWindows.clear();
+  }
 }
 
 // ──────────────────────────────────────────────────────────────────────

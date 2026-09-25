@@ -27,6 +27,9 @@ export interface AuditRecordPayload {
   session_risk: number;
   policy_version?: string;
   prev_log_hash: string | null;
+  /** Tenant binding. Null on records written before tenant scoping existed. */
+  org_id?: string | null;
+  workspace_id?: string | null;
 }
 
 export interface StoredAuditRecord extends AuditRecordPayload {
@@ -74,6 +77,9 @@ export function computeRecordHMAC(
     record.policy_version || '1.0.0',
     record.prev_log_hash ||
       'GENESIS_BLOCK_0000000000000000000000000000000000000000000000000000000000000000',
+    // Tenant fields are only part of the canonical form when present, so records
+    // written before tenant scoping still verify unchanged.
+    ...(record.org_id ? [record.org_id, record.workspace_id || ''] : []),
   ].join('|');
 
   return crypto.createHmac('sha256', secretKey).update(canonicalString).digest('hex');

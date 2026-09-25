@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { evaluatePerformanceLane } from './performanceLane';
+import { evaluatePerformanceLane, UNGROUNDED_CUTOFF_PENALTY } from './performanceLane';
 
 describe('evaluatePerformanceLane', () => {
   describe('groundedness scoring (generalized, no hardcoded strings)', () => {
@@ -99,5 +99,23 @@ describe('evaluatePerformanceLane', () => {
       // Without context, should rely on certainty calibration
       expect(result.groundedness_score).toBeGreaterThan(0.3);
     });
+  });
+});
+
+describe('Performance lane hallucination cutoff', () => {
+  it('adds the ungrounded penalty only when groundedness is below the policy cutoff', () => {
+    const prompt = 'What is the refund window?';
+    const context = 'Refunds are available within 30 days of purchase with a receipt.';
+    const response = 'Refunds are possibly available for some purchases, depending on the store.';
+
+    const lenient = evaluatePerformanceLane(prompt, context, response, 'support_bot', 0.0);
+    const strict = evaluatePerformanceLane(prompt, context, response, 'support_bot', 1.0);
+
+    expect(strict.groundedness_score).toBe(lenient.groundedness_score);
+    expect(strict.risk_score).toBeCloseTo(
+      Math.min(1, lenient.risk_score + UNGROUNDED_CUTOFF_PENALTY),
+      3,
+    );
+    expect(strict.explanation).toContain('policy cutoff');
   });
 });

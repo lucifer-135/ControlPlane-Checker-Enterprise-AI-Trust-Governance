@@ -29,6 +29,7 @@
     "lint": "tsc --noEmit",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "bench": "tsx scripts/bench-long-context.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },

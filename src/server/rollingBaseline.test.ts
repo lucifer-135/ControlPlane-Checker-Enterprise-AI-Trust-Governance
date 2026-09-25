@@ -4,7 +4,11 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { RollingBaselineTracker } from './rollingBaseline.js';
+import {
+  RollingBaselineTracker,
+  InvalidObservationError,
+  BASELINE_SCHEMA_VERSION,
+} from './rollingBaseline.js';
 
 describe('RollingBaselineTracker (Welford Algorithm)', () => {
   it('initializes with seed baselines', () => {
@@ -45,5 +49,71 @@ describe('RollingBaselineTracker (Welford Algorithm)', () => {
     const b = restored.getBaseline('internal_copilot', 'doc_search');
     expect(b.mean_tokens).toBe(550);
     expect(b.mean_latency_ms).toBe(850);
+  });
+});
+
+describe('RollingBaselineTracker safeguards', () => {
+  it('rejects invalid observations', () => {
+    const tracker = new RollingBaselineTracker(false);
+    const bad: [any, any, any, any][] = [
+      ['unknown_use_case', 'q', 10, 10],
+      ['support_bot', 'has spaces!', 10, 10],
+      ['support_bot', 'q', -1, 10],
+      ['support_bot', 'q', 10, Number.NaN],
+      ['support_bot', 'q', Number.POSITIVE_INFINITY, 10],
+      ['support_bot', 'q', 5_000_000, 10],
+    ];
+    for (const args of bad) {
+      expect(() => tracker.recordObservation(...args)).toThrow(InvalidObservationError);
+    }
+    expect(tracker.isDirty()).toBe(false);
+  });
+
+  it('winsorizes a single extreme outlier once the bucket is warm', () => {
+    const tracker = new RollingBaselineTracker(false);
+    for (let i = 0; i < 100; i++) {
+      tracker.recordObservation('support_bot', 'warm', 100 + (i % 10), 200 + (i % 10));
+    }
+    const before = tracker.getBaseline('support_bot', 'warm');
+    tracker.recordObservation('support_bot', 'warm', 900_000, 500_000);
+    const after = tracker.getBaseline('support_bot', 'warm');
+    // An unclamped update would move the mean by ~9,000 tokens
+    expect(after.mean_tokens - before.mean_tokens).toBeLessThan(5);
+    expect(after.mean_latency_ms - before.mean_latency_ms).toBeLessThan(5);
+  });
+
+  it('still adapts to a sustained shift', () => {
+    const tracker = new RollingBaselineTracker(false);
+    for (let i = 0; i < 200; i++)
+      tracker.recordObservation('support_bot', 'shift', 100 + (i % 5), 100);
+    for (let i = 0; i < 3000; i++) tracker.recordObservation('support_bot', 'shift', 300, 100);
+    expect(tracker.getBaseline('support_bot', 'shift').mean_tokens).toBeGreaterThan(250);
+  });
+
+  it('serializes with a schema version and restores legacy v1 snapshots', () => {
+    const tracker = new RollingBaselineTracker(false);
+    tracker.recordObservation('support_bot', 'v', 100, 50);
+    const snapshot = tracker.toJSON();
+    expect(snapshot.schemaVersion).toBe(BASELINE_SCHEMA_VERSION);
+
+    const legacy = new RollingBaselineTracker(false);
+    expect(legacy.fromJSON(snapshot.entries)).toBe(1); // v1 = bare entry map
+    expect(legacy.getBaseline('support_bot', 'v').mean_tokens).toBe(100);
+
+    const corrupt = new RollingBaselineTracker(false);
+    expect(
+      corrupt.fromJSON({
+        schemaVersion: BASELINE_SCHEMA_VERSION,
+        entries: {
+          'support_bot:x': {
+            useCase: 'support_bot',
+            queryType: 'x',
+            tokens: { count: 'NaN' },
+            latency: {},
+          },
+        },
+      }),
+    ).toBe(0);
+    expect(() => corrupt.fromJSON({ schemaVersion: 99, entries: {} })).toThrow(/newer/);
   });
 });

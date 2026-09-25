@@ -124,8 +124,14 @@ function findUngroundedNumbers(
     if (cleanNum.length <= 1) continue;
     if (isNaN(numValue)) continue;
 
-    // Direct text match (exact or cleaned)
-    if (contextText.includes(num) || contextText.includes(cleanNum)) continue;
+    // Direct match as a whole number (exact or cleaned). A substring match would
+    // count "30" as grounded by "2030" or "130", which long contexts almost
+    // always contain.
+    const asWholeNumber = (n: string) =>
+      new RegExp(`(?<![\\d.,])${n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\d]|[.,]\\d)`);
+    if (asWholeNumber(num).test(contextText) || asWholeNumber(cleanNum).test(contextText)) {
+      continue;
+    }
 
     // Tolerance check: find numbers in context and see if any is within ±5%
     const contextNumbers = contextText.match(/\$?\b\d+(?:,\d+)*(?:\.\d+)?%?\b/g) || [];
@@ -155,6 +161,9 @@ function findUngroundedNumbers(
 // ──────────────────────────────────────────────────────────────────────
 // Main Performance Lane Evaluator
 // ──────────────────────────────────────────────────────────────────────
+
+/** Extra risk applied when groundedness falls below the policy's hallucination cutoff. */
+export const UNGROUNDED_CUTOFF_PENALTY = 0.15;
 
 export function evaluatePerformanceLane(
   prompt: string,
@@ -258,18 +267,25 @@ export function evaluatePerformanceLane(
   const needsJudgeCall = isAmbiguous || (isConfidentlyWrong && groundednessScore > 0.2);
 
   // ── 4. Risk Score ──
+  // The policy's hallucination cutoff is the minimum acceptable groundedness:
+  // responses below it are treated as ungrounded and carry an extra penalty.
+  const isBelowGroundednessCutoff = groundednessScore < hallucinationCutoff;
   let riskScore = 1.0 - groundednessScore;
   if (isConfidentlyWrong) {
-    riskScore = Math.min(1.0, riskScore + 0.3);
+    riskScore += 0.3;
   }
+  if (isBelowGroundednessCutoff) {
+    riskScore += UNGROUNDED_CUTOFF_PENALTY;
+  }
+  riskScore = Math.min(1.0, riskScore);
 
   // ── 5. Explanation ──
   let explanation =
     'Response is firmly grounded in retrieved governance context with appropriate certainty bounds.';
   if (isConfidentlyWrong) {
     explanation = `Critical Confidently Wrong signature: AI asserts high certainty (${(certaintyScore * 100).toFixed(0)}%) despite near-zero context support (${(groundednessScore * 100).toFixed(0)}%).`;
-  } else if (groundednessScore < hallucinationCutoff) {
-    explanation = `Low groundedness score (${(groundednessScore * 100).toFixed(0)}%): Response introduces unverified claims not present in retrieved context.`;
+  } else if (isBelowGroundednessCutoff) {
+    explanation = `Low groundedness score (${(groundednessScore * 100).toFixed(0)}% < policy cutoff ${(hallucinationCutoff * 100).toFixed(0)}%): Response introduces unverified claims not present in retrieved context.`;
   } else if (isAmbiguous) {
     explanation = `Ambiguous grounding (${(groundednessScore * 100).toFixed(0)}%): Partial overlap detected; candidate for LLM Judge tiebreaker.`;
   }

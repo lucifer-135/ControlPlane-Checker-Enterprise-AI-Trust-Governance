@@ -109,19 +109,24 @@ export interface ContradictionMatch {
 function tokenizeLower(text: string): string[] {
   return text
     .toLowerCase()
+    .replace(/[.!?;\n[\]]+(?=\s|$)|[\n[\]]+/g, ` ${SENTENCE_BOUNDARY} `)
     .replace(/[^a-z0-9'\s-]/g, ' ')
     .split(/\s+/)
     .filter((w) => w.length > 1);
 }
 
+/** Token inserted at sentence and chunk boundaries so negation scopes cannot cross them. */
+const SENTENCE_BOUNDARY = 'zzsentenceboundaryzz';
+
 /**
  * Checks if a term appears within a negation scope in the given text.
  * A negation scope is defined as a negation marker within N tokens
- * before the target term.
+ * before the target term, in the same sentence.
  */
 function isNegated(tokens: string[], termIndex: number, windowSize: number = 4): boolean {
   const start = Math.max(0, termIndex - windowSize);
-  for (let i = start; i < termIndex; i++) {
+  for (let i = termIndex - 1; i >= start; i--) {
+    if (tokens[i] === SENTENCE_BOUNDARY) return false;
     if (NEGATION_MARKERS.includes(tokens[i])) {
       return true;
     }
@@ -252,20 +257,34 @@ export function detectContradictions(
   // --- 2. Negation scope analysis ---
   // Find key claims in context and check if response negates them
   const contextKeyTerms = contextTokens.filter(
-    (t) => t.length > 3 && !NEGATION_MARKERS.includes(t),
+    (t) => t.length > 3 && t !== SENTENCE_BOUNDARY && !NEGATION_MARKERS.includes(t),
   );
   const contextKeyTermSet = new Set(contextKeyTerms);
+
+  // Polarity of every occurrence of each context term. Long contexts mention the
+  // same term many times, so a term only counts as consistently negated (or
+  // affirmed) if every occurrence agrees; mixed usage cannot be contradicted.
+  const contextPolarity = new Map<string, { negated: boolean; affirmed: boolean }>();
+  for (let i = 0; i < contextTokens.length; i++) {
+    const token = contextTokens[i];
+    if (!contextKeyTermSet.has(token)) continue;
+    const polarity = contextPolarity.get(token) || { negated: false, affirmed: false };
+    if (isNegated(contextTokens, i)) polarity.negated = true;
+    else polarity.affirmed = true;
+    contextPolarity.set(token, polarity);
+  }
 
   for (let i = 0; i < responseTokens.length; i++) {
     const token = responseTokens[i];
     if (contextKeyTermSet.has(token) && token.length > 4) {
       const negatedInResponse = isNegated(responseTokens, i);
-      // Find if this term is negated in context
-      const contextIndex = contextTokens.indexOf(token);
-      const negatedInContext = contextIndex >= 0 && isNegated(contextTokens, contextIndex);
+      const polarity = contextPolarity.get(token)!;
+      const negatedInContext = polarity.negated && !polarity.affirmed;
+      const affirmedInContext = polarity.affirmed && !polarity.negated;
+      const mismatch = negatedInResponse ? affirmedInContext : negatedInContext;
 
       // Contradiction: negated in one but not the other
-      if (negatedInResponse !== negatedInContext && token.length > 5) {
+      if (mismatch && token.length > 5) {
         const alreadyFound = contradictions.some(
           (c) => c.contextTerm === token || c.responseTerm === token,
         );
@@ -313,25 +332,38 @@ export function detectContradictions(
     }
   }
 
-  // Look for numbers in similar contexts with very different values
-  for (const rn of responseNumbers) {
-    for (const cn of contextNumbers) {
-      // Check if they share context words
-      const rnWords = rn.context.split(/\s+/).filter((w) => w.length > 2);
-      const cnWords = new Set(cn.context.split(/\s+/).filter((w) => w.length > 2));
-      const sharedWords = rnWords.filter((w) => cnWords.has(w));
+  // Look for numbers in similar contexts with very different values.
+  // A response number is supported when the context states the same value in a
+  // similar context (long contexts hold many "Section N" / "N days" figures, and
+  // only the one the response actually cites matters). Otherwise at most one
+  // contradiction is reported per response number: the closest-context conflict.
+  const sharedWordCount = (a: string, b: string) => {
+    const bWords = new Set(b.split(/\s+/).filter((w) => w.length > 2));
+    return a.split(/\s+/).filter((w) => w.length > 2 && bWords.has(w)).length;
+  };
+  const sameValue = (a: number, b: number) => Math.abs(a - b) <= Math.max(1e-9, Math.abs(b) * 1e-6);
 
-      if (sharedWords.length > 0) {
-        // Same semantic context — check if numbers differ significantly
-        const ratio = Math.max(rn.value, cn.value) / Math.min(rn.value, cn.value);
-        if (ratio > 3 && Math.abs(rn.value - cn.value) > 5) {
-          contradictions.push({
-            contextTerm: `${cn.value} (context: "${cn.context}")`,
-            responseTerm: `${rn.value} (response: "${rn.context}")`,
-            reason: `Numeric contradiction in similar context: context states ${cn.value} but response claims ${rn.value} (${ratio.toFixed(1)}x difference).`,
-          });
-        }
+  for (const rn of responseNumbers) {
+    const similar = contextNumbers
+      .map((cn) => ({ cn, shared: sharedWordCount(rn.context, cn.context) }))
+      .filter((c) => c.shared > 0);
+    if (similar.some((c) => sameValue(c.cn.value, rn.value))) continue;
+
+    let best: { cn: { value: number; context: string }; shared: number; ratio: number } | null =
+      null;
+    for (const { cn, shared } of similar) {
+      // Same semantic context — check if numbers differ significantly
+      const ratio = Math.max(rn.value, cn.value) / Math.min(rn.value, cn.value);
+      if (ratio > 3 && Math.abs(rn.value - cn.value) > 5 && (!best || shared > best.shared)) {
+        best = { cn, shared, ratio };
       }
+    }
+    if (best) {
+      contradictions.push({
+        contextTerm: `${best.cn.value} (context: "${best.cn.context}")`,
+        responseTerm: `${rn.value} (response: "${rn.context}")`,
+        reason: `Numeric contradiction in similar context: context states ${best.cn.value} but response claims ${rn.value} (${best.ratio.toFixed(1)}x difference).`,
+      });
     }
   }
 

@@ -115,9 +115,18 @@ Enterprises deploying Generative AI models into mission-critical workflows face 
 
    # Base URL
    APP_URL="http://localhost:3000"
+
+   # Authentication: 'dev' (default outside production) lets requests without an API
+   # key act as a local-dev admin and binds to 127.0.0.1. 'required' demands a Bearer
+   # API key on every route except /api/health. Production is always 'required'.
+   CONTROLPLANE_AUTH_MODE=dev
+
+   # First admin key for 'required' mode (at least 24 characters). The hard-coded demo
+   # key cp_live_default_admin_key_2026 only works in 'dev' mode.
+   CONTROLPLANE_BOOTSTRAP_ADMIN_KEY=""
    ```
 
-3. **Policy Profiles**: Policies are stored as human-readable YAML documents in [`./policies/`](policies/) (`customer-support.yaml`, `decision-support.yaml`, `internal-copilot.yaml`). Modifications are hot-reloaded live without server restarts.
+3. **Policy Profiles**: Policies are stored as human-readable YAML documents in [`./policies/`](policies/) (`support-bot.yaml`, `decision-support.yaml`, `internal-copilot.yaml`). Modifications are hot-reloaded live without server restarts. Each `use_case` must be defined by exactly one file: the server refuses to start (and a hot reload keeps the previous profiles) if two files define the same `use_case`.
 
 ## Running the application
 
@@ -187,24 +196,29 @@ The platform includes a comprehensive test suite covering the three governance l
 npm run test
 ```
 
-### Test coverage areas (99 Passing Tests)
+### Test coverage areas (144 Passing Tests)
 
-| Test Suite              | File                                       | Tests | Coverage                                                         |
-| :---------------------- | :----------------------------------------- | :---: | :--------------------------------------------------------------- |
-| **LLM Judge Engine**    | `src/server/judge.test.ts`                 |   9   | Gemini backoff/jitter, local Qwen, dual consensus, normalization |
-| **Gateway Proxy**       | `src/server/gateway.test.ts`               |   8   | Model fallback, 503 backoff, PII redact/block, input guard       |
-| **Cost Lane (Welford)** | `src/lib/lanes/costLane.test.ts`           |   7   | Dynamic Welford baselines, runaway loops, Z-score adaptation     |
-| **Responsibility Lane** | `src/lib/lanes/responsibilityLane.test.ts` |  15   | SSN, email, phone, credit card, bias, regulatory rulesets        |
-| **Luhn Checksum**       | `src/lib/utils/luhn.test.ts`               |  15   | Credit card checksum validation, false positive suppression      |
-| **Performance Lane**    | `src/lib/lanes/performanceLane.test.ts`    |   8   | Grounding score, Certainty-Support Mismatch, CW detection        |
-| **Decision Engine**     | `src/lib/decisionEngine.test.ts`           |   8   | Composite scoring, multi-lane overlaps, session decay            |
-| **Input Guard**         | `src/server/inputGuard.test.ts`            |   7   | Jailbreaks, prompt injection, system prompt leak detection       |
-| **Circuit Breaker**     | `src/server/circuitBreaker.test.ts`        |   6   | Open/half-open/closed state transitions, cooldown timers         |
-| **Database Adapter**    | `src/server/db/database.test.ts`           |   4   | SQLite persistence, review decisions, tenant API keys            |
-| **Audit Chain**         | `src/server/db/auditChain.test.ts`         |   4   | SHA-256 HMAC tamper detection, integrity verification            |
-| **Rolling Baselines**   | `src/server/rollingBaseline.test.ts`       |   3   | Welford algorithm streaming mean & standard deviation            |
-| **Policy Loader**       | `src/server/policyLoader.test.ts`          |   3   | YAML parsing, schema validation, fallback defaults               |
-| **Stream Interceptor**  | `src/server/streamInterceptor.test.ts`     |   2   | Real-time SSE token interception, emergency hard cutoff          |
+| Test Suite              | File                                       | Tests | Coverage                                                            |
+| :---------------------- | :----------------------------------------- | :---: | :------------------------------------------------------------------ |
+| **LLM Judge Engine**    | `src/server/judge.test.ts`                 |   9   | Gemini backoff/jitter, local Qwen, dual consensus, normalization    |
+| **Integration (HTTP)**  | `src/server/integration.test.ts`           |  15   | Real Express app: auth, RBAC, tenant scoping, redaction, breaker    |
+| **Gateway Proxy**       | `src/server/gateway.test.ts`               |   8   | Model fallback, 503 backoff, PII redact/block, input guard          |
+| **Gateway Events**      | `src/server/gatewayEvents.test.ts`         |   5   | Payload redaction, tenant filters, epochs, SSE backpressure         |
+| **Cost Lane (Welford)** | `src/lib/lanes/costLane.test.ts`           |   9   | Dynamic Welford baselines, runaway loops, Z-score cutoff scaling    |
+| **Responsibility Lane** | `src/lib/lanes/responsibilityLane.test.ts` |  18   | SSN, email, phone, credit card, bias, rulesets, policy cutoffs      |
+| **Luhn Checksum**       | `src/lib/utils/luhn.test.ts`               |  15   | Credit card checksum validation, false positive suppression         |
+| **Performance Lane**    | `src/lib/lanes/performanceLane.test.ts`    |   9   | Grounding score, CW detection, hallucination cutoff                 |
+| **Decision Engine**     | `src/lib/decisionEngine.test.ts`           |   8   | Composite scoring, multi-lane overlaps, session decay               |
+| **Input Guard**         | `src/server/inputGuard.test.ts`            |   7   | Jailbreaks, prompt injection, system prompt leak detection          |
+| **Circuit Breaker**     | `src/server/circuitBreaker.test.ts`        |   8   | State transitions, bounded half-open probe, trip callback           |
+| **Database Adapter**    | `src/server/db/database.test.ts`           |  11   | Append-only decisions/audit, tenant scoping, keys & roles           |
+| **Audit Chain**         | `src/server/db/auditChain.test.ts`         |   4   | SHA-256 HMAC tamper detection, integrity verification               |
+| **Rolling Baselines**   | `src/server/rollingBaseline.test.ts`       |   7   | Welford stats, validation, winsorization, versioned snapshots       |
+| **Policy Loader**       | `src/server/policyLoader.test.ts`          |   6   | YAML parsing, duplicate rejection, write-back, fail-mode round-trip |
+| **Stream Interceptor**  | `src/server/streamInterceptor.test.ts`     |   3   | SSE interception, hard cutoff, tenant/session/model context         |
+| **Dev Watcher**         | `src/server/devWatch.test.ts`              |   2   | HMR ignores runtime state only, keeps `src/data` watched            |
+
+Tests run against an in-memory SQLite database (`vitest.setup.ts` sets `CONTROLPLANE_DB_PATH=:memory:`) and temporary policy directories, so they never modify `data/` or `policies/`.
 
 ## Solution architecture
 
@@ -392,29 +406,35 @@ rules:
 
 ## REST API reference
 
-| Endpoint                    |  Method  | Description                                                                      |
-| :-------------------------- | :------: | :------------------------------------------------------------------------------- |
-| `/v1/chat/completions`      |  `POST`  | OpenAI-compatible reverse proxy with model fallback & streaming SSE interception |
-| `/api/evaluate`             |  `POST`  | Evaluates a single interaction across all three governance lanes                 |
-| `/api/evaluate/batch`       |  `POST`  | Batch evaluation of dataset against active policy profiles                       |
-| `/api/judge`                |  `POST`  | LLM Judge arbitration: Gemini, Local Sovereign Qwen, or Dual Consensus           |
-| `/api/input-guard`          |  `POST`  | Pre-execution scan for prompt injections, jailbreaks, and PII leaks              |
-| `/api/rate-limit/simulate`  |  `POST`  | Simulates request bursts against sliding-window rate limiters                    |
-| `/api/rate-limit/reset`     |  `POST`  | Resets rate limit windows for a given API key                                    |
-| `/api/policies`             |  `GET`   | Retrieves all active YAML policy profiles                                        |
-| `/api/policies/:useCase`    |  `PUT`   | Updates a specific policy profile at runtime                                     |
-| `/api/policies/reset`       |  `POST`  | Resets policy profiles to YAML baseline configurations                           |
-| `/api/baselines`            |  `GET`   | Retrieves current Welford empirical distributions ($\mu, \sigma$)                |
-| `/api/baselines/observe`    |  `POST`  | Feeds a new token/latency observation into the Welford accumulator               |
-| `/api/audit-logs`           |  `GET`   | Retrieves paginated audit trail records                                          |
-| `/api/audit-logs/verify`    |  `GET`   | Verifies cryptographic HMAC-SHA256 chain integrity                               |
-| `/api/review-decisions`     |  `GET`   | Queries persisted Human-in-the-Lead review decisions                             |
-| `/api/review-decisions`     |  `POST`  | Persists an HITL triage decision to SQLite                                       |
-| `/api/review-decisions/:id` | `DELETE` | Deletes a specific review decision and returns item to queue                     |
-| `/api/review-decisions`     | `DELETE` | Resets / clears all recorded review decisions                                    |
-| `/api/keys`                 |  `POST`  | Generates a new tenant API key with rate limits                                  |
-| `/api/metrics`              |  `GET`   | Exports Prometheus metrics text format                                           |
-| `/api/health`               |  `GET`   | Server health check, Gemini key readiness, and Local Ollama status & models      |
+Every route except `/api/health` requires `Authorization: Bearer <api key>` (in `dev` auth mode a missing header acts as a local-dev admin). API keys carry a role, from lowest to highest privilege: `service` < `viewer` < `reviewer` < `admin`. Reads are scoped to the caller's tenant. Admins see their whole org, and other roles see only their own workspace.
+
+| Endpoint                     | Method | Min. role  | Description                                                                          |
+| :--------------------------- | :----: | :--------: | :----------------------------------------------------------------------------------- |
+| `/v1/chat/completions`       | `POST` | `service`  | OpenAI-compatible reverse proxy with per-provider model fallback & SSE interception  |
+| `/api/evaluate`              | `POST` | `service`  | Evaluates one interaction; writes an audit record only with `persist: true`          |
+| `/api/evaluate/batch`        | `POST` | `service`  | Simulates a dataset against policy profiles; no audit writes unless `persist: true`  |
+| `/api/judge`                 | `POST` | `service`  | LLM Judge arbitration: Gemini, Local Sovereign Qwen, or Dual Consensus               |
+| `/api/input-guard`           | `POST` |  `viewer`  | Pre-execution scan for prompt injections, jailbreaks, and PII leaks                  |
+| `/api/policies`              | `GET`  |  `viewer`  | Retrieves all active YAML policy profiles                                            |
+| `/api/baselines`             | `GET`  |  `viewer`  | Retrieves current Welford empirical distributions ($\mu, \sigma$)                    |
+| `/api/audit-logs`            | `GET`  |  `viewer`  | Paginated audit trail records for the caller's tenant                                |
+| `/api/review-decisions`      | `GET`  |  `viewer`  | Persisted Human-in-the-Lead review decisions for the caller's tenant                 |
+| `/api/gateway/events`        | `GET`  |  `viewer`  | Poll recent (PII-redacted) gateway events; pass back `after` + `epoch` as the cursor |
+| `/api/gateway/events/stream` | `GET`  |  `viewer`  | Same events as Server-Sent Events                                                    |
+| `/api/gateway/escalations`   | `GET`  |  `viewer`  | Persisted `BLOCK_ESCALATE` gateway events that have no review decision yet           |
+| `/api/metrics`               | `GET`  |  `viewer`  | Exports Prometheus metrics text format                                               |
+| `/api/review-decisions`      | `POST` | `reviewer` | Appends an HITL decision (immutable; `409` on a duplicate ID)                        |
+| `/api/policies/:useCase`     | `PUT`  |  `admin`   | Updates a policy profile and persists it to its YAML file                            |
+| `/api/policies/reset`        | `POST` |  `admin`   | Resets policy profiles and YAML files to defaults                                    |
+| `/api/baselines/observe`     | `POST` |  `admin`   | Manually feeds a validated token/latency observation into the Welford accumulator    |
+| `/api/baselines/reset`       | `POST` |  `admin`   | Resets rolling baselines to their seeded defaults                                    |
+| `/api/rate-limit/simulate`   | `POST` |  `admin`   | Simulates request bursts against the caller's own rate-limit window                  |
+| `/api/rate-limit/reset`      | `POST` |  `admin`   | Resets the caller's rate-limit window                                                |
+| `/api/audit-logs/verify`     | `GET`  |  `admin`   | Verifies cryptographic HMAC-SHA256 chain integrity                                   |
+| `/api/keys`                  | `POST` |  `admin`   | Generates an API key (with a `role`) within the admin's own org                      |
+| `/api/health`                | `GET`  |   public   | Health check, auth mode, Gemini key readiness, and Local Ollama status & models      |
+
+Review decisions and audit records are **append-only**: SQLite triggers reject `UPDATE`/`DELETE`, so a correction is recorded as a new decision for the same interaction (the latest one is effective).
 
 ## Key platform features
 
@@ -436,7 +456,7 @@ rules:
 - Side-by-side prompt, retrieved context, and model output view with colored span highlights.
 - 1-click arbitration actions: **Approve & Release**, **Overturn & Correct**, **Escalate to Legal/Security**, or **Trigger Gemini / Qwen / Dual Judge**.
 - Adjudications are persisted directly to SQLite with automated session audit logging.
-- **Delete / Reset Recorded Decisions**: Individual decisions can be deleted to return specific interactions back to the active review queue, or reset completely in bulk with confirmation to clear the session review state.
+- **Append-Only Decision Trail**: Recorded decisions cannot be edited or deleted (enforced by SQLite triggers). Each decision is attributed to the authenticated API key that made it, and a correction is recorded as a new decision.
 
 ### 4. Interactive Sandbox Lab
 
@@ -478,6 +498,8 @@ rules:
 ## Security and privacy posture
 
 - **Zero Client-Side Key Exposure**: The `GEMINI_API_KEY` is strictly accessed on the server. No credentials or keys are bundled or transmitted to the client.
+- **Authenticated, Role-Based API**: In production every route except `/api/health` requires an API key; keys carry `service`/`viewer`/`reviewer`/`admin` roles. Unauthenticated access exists only in the explicit local-dev auth mode, which binds to loopback by default. The hard-coded demo key is disabled outside dev mode.
+- **Tenant Isolation & Payload Minimization**: Audit logs, review decisions, gateway events, and escalations are stamped with and filtered by org/workspace. Gateway events are PII-redacted and truncated before buffering (`CONTROLPLANE_EVENT_PAYLOADS=redacted|none`), expire after a TTL, and slow SSE consumers are disconnected.
 - **Zero-Egress Sovereign LLM Option**: Support for local Ollama instances ensures completely sovereign evaluation without any data leaving private network boundaries.
 - **Fail-Safe Heuristic Simulation**: In air-gapped environments or scenarios where external LLMs are unavailable, the platform gracefully switches to deterministic semantic and statistical heuristics without failing requests.
 - **Cryptographic Audit Trail**: Immutable SHA-256 HMAC hash chaining ensures all evaluation records and HITL triage decisions are tamper-evident.
@@ -560,7 +582,7 @@ ControlPlane-Checker/
 │       └── db/                         # Database Layer
 │           ├── auditChain.ts           # SHA-256 HMAC audit chaining & verification
 │           ├── database.ts             # SQLite adapter (better-sqlite3)
-│           └── schema.sql              # Database DDL schema
+│           └── schema.ts               # Database DDL schema, migrations & append-only triggers
 └── dist/                     # Production build output (generated)
 ```
 

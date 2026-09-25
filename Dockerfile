@@ -31,7 +31,6 @@ RUN npm ci --omit=dev
 # Copy built frontend dist and server bundle from builder
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/policies ./policies
-COPY --from=builder /app/src/server/db/schema.sql ./src/server/db/schema.sql
 
 # Create persistent storage volume mount directory
 RUN mkdir -p /app/data && chown -R node:node /app

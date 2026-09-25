@@ -10,7 +10,11 @@
  * 1. Loads and parses .yaml/.yml policy definitions from disk
  * 2. Maps both standard flat YAML and Kubernetes-style CRD specs into PolicyProfile
  * 3. Hot-reloads on file changes without restarting the gateway
- * 4. Fallback to DEFAULT_POLICY_PROFILES when directory is empty or errors occur
+ * 4. Fallback to DEFAULT_POLICY_PROFILES when directory is empty or unreadable
+ *
+ * Exactly one file may define each use_case. Files are read in sorted order and
+ * a second definition of the same use_case raises DuplicatePolicyError instead
+ * of silently depending on filesystem enumeration order.
  */
 
 import * as fs from 'fs';
@@ -92,7 +96,7 @@ export function parsePolicyYaml(raw: any): PolicyProfile | null {
       raw.runtime_governance?.pre_response_blocking ??
       raw.pre_response_blocking ??
       base.pre_response_blocking,
-    failMode: raw.runtime_governance?.fail_mode ?? raw.failMode ?? 'FAIL_OPEN',
+    failMode: raw.runtime_governance?.fail_mode ?? raw.fail_mode ?? raw.failMode ?? 'FAIL_OPEN',
     active_lanes: {
       performance: raw.active_lanes?.performance ?? base.active_lanes.performance,
       cost: raw.active_lanes?.cost ?? base.active_lanes.cost,
@@ -157,37 +161,86 @@ export function ensureDefaultPolicyFiles(policiesDir: string = DEFAULT_POLICIES_
   }
 }
 
+export class DuplicatePolicyError extends Error {
+  constructor(
+    public readonly useCase: string,
+    public readonly files: string[],
+  ) {
+    super(
+      `Policy '${useCase}' is defined by multiple files (${files.join(', ')}). Keep exactly one file per use_case.`,
+    );
+    this.name = 'DuplicatePolicyError';
+  }
+}
+
+function listPolicyFiles(policiesDir: string): string[] {
+  return fs
+    .readdirSync(policiesDir)
+    .filter((f) => f.endsWith('.yaml') || f.endsWith('.yml'))
+    .sort();
+}
+
+interface LoadedPolicyFile {
+  file: string;
+  profile: PolicyProfile;
+}
+
+/** Parses every policy file in sorted order. Unparseable files are skipped with a warning. */
+function readPolicyFiles(policiesDir: string): LoadedPolicyFile[] {
+  const loaded: LoadedPolicyFile[] = [];
+  for (const file of listPolicyFiles(policiesDir)) {
+    try {
+      const content = fs.readFileSync(path.join(policiesDir, file), 'utf-8');
+      const profile = parsePolicyYaml(yamlLoad(content));
+      if (profile) loaded.push({ file, profile });
+    } catch (err) {
+      console.warn(`[PolicyLoader] Skipping unparseable policy file ${file}:`, err);
+    }
+  }
+  return loaded;
+}
+
+/** Throws DuplicatePolicyError if two files define the same use_case. */
+function assertNoDuplicates(loaded: LoadedPolicyFile[]): void {
+  const filesByUseCase = new Map<string, string[]>();
+  for (const { file, profile } of loaded) {
+    const files = filesByUseCase.get(profile.use_case) || [];
+    files.push(file);
+    filesByUseCase.set(profile.use_case, files);
+  }
+  for (const [useCase, files] of filesByUseCase) {
+    if (files.length > 1) throw new DuplicatePolicyError(useCase, files);
+  }
+}
+
 /**
  * Loads all policy profiles from the policies directory.
+ *
+ * @throws DuplicatePolicyError when more than one file defines the same use_case.
  */
 export function loadPoliciesFromDir(
   policiesDir: string = DEFAULT_POLICIES_DIR,
 ): Record<string, PolicyProfile> {
   const result: Record<string, PolicyProfile> = { ...DEFAULT_POLICY_PROFILES };
 
+  let loaded: LoadedPolicyFile[];
   try {
     ensureDefaultPolicyFiles(policiesDir);
-
-    const files = fs
-      .readdirSync(policiesDir)
-      .filter((f) => f.endsWith('.yaml') || f.endsWith('.yml'));
-    for (const file of files) {
-      const fullPath = path.join(policiesDir, file);
-      const content = fs.readFileSync(fullPath, 'utf-8');
-      const parsedYaml = yamlLoad(content);
-      const profile = parsePolicyYaml(parsedYaml);
-
-      if (profile) {
-        result[profile.use_case] = profile;
-        console.log(
-          `[PolicyLoader] Loaded policy '${profile.use_case}' from ${file} (v${profile.version})`,
-        );
-      }
-    }
+    loaded = readPolicyFiles(policiesDir);
   } catch (err) {
     console.warn(
       '[PolicyLoader] Error reading policies directory, falling back to in-memory defaults:',
       err,
+    );
+    return result;
+  }
+
+  assertNoDuplicates(loaded);
+
+  for (const { file, profile } of loaded) {
+    result[profile.use_case] = profile;
+    console.log(
+      `[PolicyLoader] Loaded policy '${profile.use_case}' from ${file} (v${profile.version})`,
     );
   }
 
@@ -217,8 +270,14 @@ export function watchPoliciesDir(
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
         console.log(`[PolicyLoader] Detected change in ${filename}, reloading policies...`);
-        const updated = loadPoliciesFromDir(policiesDir);
-        onChange(updated);
+        try {
+          onChange(loadPoliciesFromDir(policiesDir));
+        } catch (err) {
+          // Keep serving the last good policy set rather than an ambiguous one
+          console.error(
+            `[PolicyLoader] Rejected policy reload; keeping previous profiles: ${(err as Error).message}`,
+          );
+        }
       }, 300);
     });
 
@@ -227,4 +286,34 @@ export function watchPoliciesDir(
     console.warn('[PolicyLoader] Could not initialize directory watcher:', err);
     return null;
   }
+}
+
+/**
+ * Writes a single PolicyProfile back to YAML file on disk.
+ * This ensures Policy Studio UI edits persist across server restarts
+ * and are picked up by the hot-reload watcher.
+ *
+ * Writes to the file that already defines this use_case (so no duplicate is
+ * created); falls back to the canonical `<use-case>.yaml` name.
+ */
+export function writePolicyToFile(
+  profile: PolicyProfile,
+  policiesDir: string = DEFAULT_POLICIES_DIR,
+): void {
+  const useCase = profile?.use_case || 'support_bot';
+  if (!fs.existsSync(policiesDir)) {
+    fs.mkdirSync(policiesDir, { recursive: true });
+  }
+  const existing = readPolicyFiles(policiesDir).filter((l) => l.profile.use_case === useCase);
+  if (existing.length > 1) {
+    throw new DuplicatePolicyError(
+      useCase,
+      existing.map((l) => l.file),
+    );
+  }
+  const filename = existing[0]?.file ?? `${useCase.replace(/_/g, '-')}.yaml`;
+  const filePath = path.join(policiesDir, filename);
+  const yamlContent = policyToYaml(profile);
+  fs.writeFileSync(filePath, yamlContent, 'utf-8');
+  console.log(`[PolicyLoader] Persisted policy '${useCase}' to ${filename}`);
 }

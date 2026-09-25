@@ -16,11 +16,15 @@
  * 4. Full response accumulation for background Tier 2/3 governance evaluation
  */
 
+import crypto from 'crypto';
 import type { Response } from 'express';
 import { validateCreditCard } from '../lib/utils/luhn.js';
 import { evaluateInteraction } from '../lib/decisionEngine.js';
 import type { PolicyProfile, SessionState, SyntheticInteraction } from '../types.js';
 import { globalBaselineTracker } from './rollingBaseline.js';
+import { insertAuditLog } from './db/database.js';
+import { recordEvaluationTelemetry } from './telemetry.js';
+import { emitGatewayEvent } from './gatewayEvents.js';
 
 // Fast deterministic regexes for sliding window
 const SSN_FAST_REGEX = /\b(?!000|666|9\d{2})\d{3}[- ]\d{2}[- ]\d{4}\b/;
@@ -29,6 +33,15 @@ const AWS_SECRET_REGEX =
   /(?:AKIA[0-9A-Z]{16}|aws_secret_access_key\s*=\s*['"][a-zA-Z0-9/+=]{40}['"])/;
 const GENERIC_API_KEY_REGEX =
   /(?:bearer\s+[a-zA-Z0-9_\-\.]{24,}|api[_-]?key\s*[:=]\s*['"][a-zA-Z0-9_\-]{20,}['"])/i;
+
+/** Request context carried from the gateway so stream records match the real caller. */
+export interface StreamContext {
+  tenantOrgId: string;
+  tenantWorkspaceId: string;
+  sessionId: string;
+  model: string;
+  policyKey: string;
+}
 
 export interface StreamAuditLog {
   fullText: string;
@@ -95,8 +108,21 @@ export async function interceptStream(
   userPrompt: string,
   sessionState: SessionState,
   turnNumber: number,
+  context?: StreamContext,
 ): Promise<StreamAuditLog> {
   const streamStart = performance.now();
+  const ctx: StreamContext = context ?? {
+    tenantOrgId: 'anonymous',
+    tenantWorkspaceId: 'default',
+    sessionId: `stream-session-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`,
+    model: 'unknown-stream-model',
+    policyKey: policy.use_case,
+  };
+  let upstreamUsage: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+  } | null = null;
   let firstTokenTime: number | null = null;
   let accumulatedText = '';
   let slidingBuffer = '';
@@ -162,6 +188,9 @@ export async function interceptStream(
           try {
             const parsed = JSON.parse(jsonStr);
             const deltaContent = parsed.choices?.[0]?.delta?.content || '';
+            if (parsed.usage && typeof parsed.usage === 'object') {
+              upstreamUsage = parsed.usage;
+            }
 
             if (deltaContent) {
               if (firstTokenTime === null) {
@@ -247,28 +276,32 @@ export async function interceptStream(
 
   const totalDuration = performance.now() - streamStart;
   const tokenEstimate = Math.ceil(accumulatedText.length / 4);
+  // Prefer provider-reported usage (sent in the final chunk) over the char/4 estimate
+  const promptTokens = upstreamUsage?.prompt_tokens ?? Math.ceil(userPrompt.length / 4);
+  const completionTokens = upstreamUsage?.completion_tokens ?? tokenEstimate;
+  const totalTokens = upstreamUsage?.total_tokens ?? promptTokens + completionTokens;
 
   // Background governance evaluation & session tracking (Tier 2/3)
   try {
     const postInteraction: SyntheticInteraction = {
-      id: `stream-${Date.now()}`,
+      id: `stream-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`,
       use_case: policy.use_case,
-      session_id: `stream-session-${Date.now()}`,
+      session_id: ctx.sessionId,
       turn_number: turnNumber,
       query_type: 'streaming_completion',
       prompt: userPrompt,
       retrieved_context: null,
       response: accumulatedText,
       token_count: {
-        prompt: Math.ceil(userPrompt.length / 4),
-        completion: tokenEstimate,
-        total: Math.ceil(userPrompt.length / 4) + tokenEstimate,
+        prompt: promptTokens,
+        completion: completionTokens,
+        total: totalTokens,
       },
       latency_ms: Math.round(totalDuration),
       ground_truth_labels: hardViolation ? ['pii_leaking'] : ['clean'],
       metadata: {
         created_at: new Date().toISOString(),
-        model_name: 'streaming-model',
+        model_name: ctx.model,
       },
     };
 
@@ -281,6 +314,35 @@ export async function interceptStream(
       timestamp: Date.now(),
     });
     sessionState.currentRisk = postEval.composite_risk_score;
+
+    // Persist to audit log & telemetry (bridges streaming gateway → audit trail)
+    try {
+      insertAuditLog(postInteraction, postEval, {
+        tenant: { orgId: ctx.tenantOrgId, workspaceId: ctx.tenantWorkspaceId },
+      });
+      recordEvaluationTelemetry(
+        postEval.verdict,
+        postEval.use_case,
+        postEval.responsibility.pii_detected.map((p) => p.type),
+        postEval.performance.risk_score >= 0.4,
+        postEval.has_multi_lane_overlap,
+        postEval.added_overhead_latency_ms,
+      );
+    } catch (auditErr) {
+      console.warn('[StreamInterceptor] Failed to persist audit/telemetry:', auditErr);
+    }
+
+    // Emit gateway event for Live Feed & Review Queue
+    emitGatewayEvent({
+      interaction: postInteraction,
+      evaluation: postEval,
+      tenantOrgId: ctx.tenantOrgId,
+      tenantWorkspaceId: ctx.tenantWorkspaceId,
+      policyProfile: ctx.policyKey,
+      model: ctx.model,
+      isStreaming: true,
+      timestamp: new Date().toISOString(),
+    });
   } catch (evalErr) {
     console.warn('[StreamInterceptor] Post-stream eval failed:', evalErr);
   }

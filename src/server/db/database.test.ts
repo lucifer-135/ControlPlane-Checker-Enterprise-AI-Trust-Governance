@@ -12,13 +12,18 @@ import {
   getAllAuditLogsForVerification,
   insertReviewDecision,
   getReviewDecisions,
-  deleteReviewDecision,
-  clearReviewDecisions,
   createNewApiKey,
   getApiKeyBySecret,
   saveDbSessionState,
   loadDbSessionState,
+  getDb,
+  insertGatewayEscalation,
+  getPendingGatewayEscalations,
+  saveBaselineState,
+  loadBaselineState,
+  DuplicateReviewDecisionError,
 } from './database.js';
+import { DEMO_API_KEY } from '../config.js';
 import { verifyAuditChain } from './auditChain.js';
 import type { EvaluationResult, ReviewDecision, SyntheticInteraction } from '../../types.js';
 
@@ -135,19 +140,97 @@ describe('Database Adapter (better-sqlite3)', () => {
     expect(retrieved[0].reviewer).toBe('compliance_officer_alice');
     expect(retrieved[0].action).toBe('CONFIRM_BLOCK');
 
-    // Test deleting single decision
-    const deleted = deleteReviewDecision('rev-1');
-    expect(deleted).toBe(true);
-    expect(getReviewDecisions('int-test-1')).toHaveLength(0);
+    // A correction is a new decision; the latest one is returned first
+    insertReviewDecision({ ...decision, id: 'rev-1b', action: 'OVERRIDE_ALLOW' });
+    const history = getReviewDecisions('int-test-1');
+    expect(history.map((d) => d.id)).toEqual(['rev-1b', 'rev-1']);
+  });
 
-    // Test clearing all decisions
+  function makeDecision(overrides: Partial<ReviewDecision> = {}): ReviewDecision {
+    return {
+      id: 'rev-x',
+      interaction_id: 'int-x',
+      reviewer: 'alice',
+      action: 'CONFIRM_BLOCK',
+      notes: '',
+      original_verdict: 'BLOCK_ESCALATE',
+      new_verdict: 'BLOCK_ESCALATE',
+      primary_trigger_lane: 'Responsibility',
+      reviewed_at: new Date().toISOString(),
+      ...overrides,
+    };
+  }
+
+  it('keeps review decisions append-only', () => {
+    const decision = makeDecision({ id: 'rev-immutable', interaction_id: 'int-immutable' });
     insertReviewDecision(decision);
-    insertReviewDecision({ ...decision, id: 'rev-2', interaction_id: 'int-test-2' });
-    expect(getReviewDecisions()).toHaveLength(2);
 
-    const clearedCount = clearReviewDecisions();
-    expect(clearedCount).toBe(2);
-    expect(getReviewDecisions()).toHaveLength(0);
+    // Re-inserting the same ID cannot overwrite the original
+    expect(() => insertReviewDecision({ ...decision, action: 'OVERRIDE_ALLOW' })).toThrow(
+      DuplicateReviewDecisionError,
+    );
+    // Triggers block UPDATE and DELETE even for direct SQL
+    expect(() =>
+      getDb().prepare(`UPDATE review_decisions SET action = 'OVERRIDE_ALLOW'`).run(),
+    ).toThrow(/append-only/);
+    expect(() => getDb().prepare('DELETE FROM review_decisions').run()).toThrow(/append-only/);
+    expect(getReviewDecisions('int-immutable')[0].action).toBe('CONFIRM_BLOCK');
+  });
+
+  it('keeps the audit log append-only', () => {
+    getDb()
+      .prepare(
+        `INSERT INTO audit_log (id, interaction_id, timestamp, request_hash, response_hash, verdict,
+          composite_risk_score, session_risk, log_hmac) VALUES ('a1','i1','t','r','r','ALLOW',0,0,'h')`,
+      )
+      .run();
+    expect(() => getDb().prepare('DELETE FROM audit_log').run()).toThrow(/append-only/);
+    expect(() => getDb().prepare(`UPDATE audit_log SET verdict = 'X'`).run()).toThrow(
+      /append-only/,
+    );
+  });
+
+  it('scopes review decisions by tenant', () => {
+    insertReviewDecision(makeDecision({ id: 'rev-a', interaction_id: 'int-a' }), {
+      orgId: 'org_a',
+      workspaceId: 'ws1',
+    });
+    insertReviewDecision(makeDecision({ id: 'rev-b', interaction_id: 'int-b' }), {
+      orgId: 'org_b',
+      workspaceId: 'ws1',
+    });
+    insertReviewDecision(makeDecision({ id: 'rev-a2', interaction_id: 'int-a2' }), {
+      orgId: 'org_a',
+      workspaceId: 'ws2',
+    });
+
+    const orgA = getReviewDecisions(undefined, { orgId: 'org_a' }).map((d) => d.id);
+    expect(orgA.sort()).toEqual(['rev-a', 'rev-a2']);
+    const orgAws2 = getReviewDecisions(undefined, { orgId: 'org_a', workspaceId: 'ws2' });
+    expect(orgAws2.map((d) => d.id)).toEqual(['rev-a2']);
+    expect(getReviewDecisions()).toHaveLength(3);
+  });
+
+  it('returns only unreviewed escalations for the tenant', () => {
+    insertGatewayEscalation('gw-1', { orgId: 'org_a', workspaceId: 'ws' }, '{"id":1}');
+    insertGatewayEscalation('gw-2', { orgId: 'org_a', workspaceId: 'ws' }, '{"id":2}');
+    insertGatewayEscalation('gw-3', { orgId: 'org_b', workspaceId: 'ws' }, '{"id":3}');
+
+    expect(getPendingGatewayEscalations(10, { orgId: 'org_a' })).toEqual(['{"id":1}', '{"id":2}']);
+
+    insertReviewDecision(makeDecision({ id: 'rev-gw-1', interaction_id: 'gw-1' }), {
+      orgId: 'org_a',
+      workspaceId: 'ws',
+    });
+    expect(getPendingGatewayEscalations(10, { orgId: 'org_a' })).toEqual(['{"id":2}']);
+    expect(getPendingGatewayEscalations(10)).toEqual(['{"id":2}', '{"id":3}']);
+  });
+
+  it('persists versioned baseline snapshots', () => {
+    expect(loadBaselineState()).toBeNull();
+    saveBaselineState(2, '{"a":1}');
+    saveBaselineState(2, '{"a":2}');
+    expect(loadBaselineState()).toEqual({ schemaVersion: 2, stateJson: '{"a":2}' });
   });
 
   it('creates and authenticates API keys', () => {
@@ -165,9 +248,39 @@ describe('Database Adapter (better-sqlite3)', () => {
     expect(authenticated).not.toBeNull();
     expect(authenticated?.org_id).toBe('acme_corp');
     expect(authenticated?.rate_limit_rpm).toBe(250);
+    // Least privilege by default
+    expect(authenticated?.role).toBe('service');
+
+    const reviewerKey = createNewApiKey('acme_corp', 'ws_prod', '', 'support_bot', 10, 'reviewer');
+    expect(getApiKeyBySecret(reviewerKey.rawKey)?.role).toBe('reviewer');
 
     // Bad key returns null
     expect(getApiKeyBySecret('cp_live_invalid_key_xyz')).toBeNull();
+  });
+
+  it('only accepts the hard-coded demo key in dev auth mode', () => {
+    // Test runs are in dev mode (NODE_ENV=test, no CONTROLPLANE_AUTH_MODE)
+    expect(getApiKeyBySecret(DEMO_API_KEY)?.role).toBe('admin');
+
+    process.env.CONTROLPLANE_AUTH_MODE = 'required';
+    try {
+      initDatabase(':memory:');
+      expect(getApiKeyBySecret(DEMO_API_KEY)).toBeNull();
+    } finally {
+      delete process.env.CONTROLPLANE_AUTH_MODE;
+    }
+  });
+
+  it('seeds a bootstrap admin key from the environment', () => {
+    process.env.CONTROLPLANE_AUTH_MODE = 'required';
+    process.env.CONTROLPLANE_BOOTSTRAP_ADMIN_KEY = 'cp_live_bootstrap_test_key_0123456789';
+    try {
+      initDatabase(':memory:');
+      expect(getApiKeyBySecret('cp_live_bootstrap_test_key_0123456789')?.role).toBe('admin');
+    } finally {
+      delete process.env.CONTROLPLANE_AUTH_MODE;
+      delete process.env.CONTROLPLANE_BOOTSTRAP_ADMIN_KEY;
+    }
   });
 
   it('saves and loads session state across restarts', () => {

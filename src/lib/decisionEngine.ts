@@ -103,8 +103,18 @@ export function evaluateInteraction(
   const evalStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
 
   // 1. Run the three lanes
-  const performanceResult = evaluatePerformanceLane(
+  // Grounding sources mirror what the model actually received: the system
+  // prompt, what the user said in earlier turns, and the latest message.
+  // Earlier assistant turns are excluded — they may themselves be ungrounded.
+  const groundingPrompt = [
+    interaction.system_prompt,
+    ...(interaction.history || []).filter((t) => t.role === 'user').map((t) => t.content),
     interaction.prompt,
+  ]
+    .filter(Boolean)
+    .join('\n');
+  const performanceResult = evaluatePerformanceLane(
+    groundingPrompt,
     interaction.retrieved_context,
     interaction.response,
     interaction.use_case,

@@ -19,13 +19,37 @@ export interface TokenUsage {
   total: number;
 }
 
+/** One prior turn of the conversation sent to the model with this request. */
+export interface ConversationTurn {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+/** One retrieved document chunk, as returned by the RAG retriever. */
+export interface ContextChunk {
+  /** Stable identifier of the source document/section, e.g. "POL-FIN-008 §8.4". */
+  source_id: string;
+  title: string;
+  text: string;
+  /** Retriever similarity score, if available. */
+  score?: number;
+}
+
 export interface SyntheticInteraction {
   id: string;
   use_case: UseCaseId;
   session_id: string;
   turn_number: number;
   query_type: string;
+  /** Latest user message. */
   prompt: string;
+  /** System instructions sent with the request (long-context scenarios). */
+  system_prompt?: string;
+  /** Earlier conversation turns sent with the request (long-context scenarios). */
+  history?: ConversationTurn[];
+  /** Individual retrieved chunks. When present, `retrieved_context` is their joined text. */
+  context_chunks?: ContextChunk[];
+  /** Full retrieved context evaluated by the governance lanes. */
   retrieved_context: string | null;
   response: string;
   token_count: TokenUsage;

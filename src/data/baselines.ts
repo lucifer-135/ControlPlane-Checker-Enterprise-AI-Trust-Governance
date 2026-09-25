@@ -129,6 +129,46 @@ export const BASELINE_METRICS: Record<string, QueryBaseline> = {
     stddev_latency_ms: 220,
     sample_size: 2500,
   },
+
+  // Long-context RAG workloads (system prompt + history + ~15 retrieved chunks).
+  // Their token and latency profile is an order of magnitude above short chats,
+  // so they are baselined separately rather than scored against chat baselines.
+  "support_bot:rag_account_dispute": {
+    use_case: "support_bot",
+    query_type: "rag_account_dispute",
+    mean_tokens: 2300,
+    stddev_tokens: 450,
+    mean_latency_ms: 2700,
+    stddev_latency_ms: 600,
+    sample_size: 1800,
+  },
+  "internal_copilot:rag_runbook_search": {
+    use_case: "internal_copilot",
+    query_type: "rag_runbook_search",
+    mean_tokens: 1800,
+    stddev_tokens: 420,
+    mean_latency_ms: 2500,
+    stddev_latency_ms: 600,
+    sample_size: 2400,
+  },
+  "decision_support:rag_claim_file_review": {
+    use_case: "decision_support",
+    query_type: "rag_claim_file_review",
+    mean_tokens: 2000,
+    stddev_tokens: 400,
+    mean_latency_ms: 4200,
+    stddev_latency_ms: 900,
+    sample_size: 950,
+  },
+  "decision_support:rag_credit_memo": {
+    use_case: "decision_support",
+    query_type: "rag_credit_memo",
+    mean_tokens: 1900,
+    stddev_tokens: 380,
+    mean_latency_ms: 3800,
+    stddev_latency_ms: 850,
+    sample_size: 1100,
+  },
 };
 
 export function getBaseline(
@@ -139,7 +179,8 @@ export function getBaseline(
   if (BASELINE_METRICS[key]) {
     return BASELINE_METRICS[key];
   }
-  // Default fallback baseline by use case
+  // Default fallback baseline by use case. sample_size 0 marks these as
+  // placeholders, so the cost lane does not Z-score against them.
   if (useCase === "support_bot") {
     return {
       use_case: "support_bot",
@@ -148,7 +189,7 @@ export function getBaseline(
       stddev_tokens: 35,
       mean_latency_ms: 350,
       stddev_latency_ms: 70,
-      sample_size: 1000,
+      sample_size: 0,
     };
   } else if (useCase === "internal_copilot") {
     return {
@@ -158,7 +199,7 @@ export function getBaseline(
       stddev_tokens: 100,
       mean_latency_ms: 850,
       stddev_latency_ms: 180,
-      sample_size: 1000,
+      sample_size: 0,
     };
   } else {
     return {
@@ -168,7 +209,7 @@ export function getBaseline(
       stddev_tokens: 95,
       mean_latency_ms: 1100,
       stddev_latency_ms: 220,
-      sample_size: 1000,
+      sample_size: 0,
     };
   }
 }

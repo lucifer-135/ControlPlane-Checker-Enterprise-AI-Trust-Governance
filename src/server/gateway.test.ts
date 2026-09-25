@@ -222,6 +222,11 @@ describe('Gateway Handler (handleChatCompletions)', () => {
     expect(res.headers['X-ControlPlane-Verdict']).toBe('BLOCK_ESCALATE');
     expect(res.body.choices[0].message.content).toContain('flagged by our governance system');
     expect(res.body.governance.verdict).toBe('BLOCK_ESCALATE');
+    // The withheld PII must not leak back through the governance metadata
+    expect(JSON.stringify(res.body)).not.toContain('078-05-1120');
+    expect(res.body.governance.triggering_spans.some((s: any) => s.text === '[REDACTED_SSN]')).toBe(
+      true,
+    );
   });
 
   it('retries with backoff and falls back to candidate model on 503 unavailable', async () => {

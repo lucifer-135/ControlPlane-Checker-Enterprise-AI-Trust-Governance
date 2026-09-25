@@ -5,6 +5,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { interceptStream } from './streamInterceptor.js';
+import { getRecentGatewayEvents } from './gatewayEvents.js';
 import { DEFAULT_POLICY_PROFILES } from '../lib/policyProfiles.js';
 import type { SessionState } from '../types.js';
 
@@ -110,5 +111,35 @@ describe('StreamInterceptor', () => {
     expect(
       clientRes.writtenData.some((d: string) => d.includes('and your account is approved.')),
     ).toBe(false);
+  });
+});
+
+describe('StreamInterceptor request context', () => {
+  it('records the gateway tenant, session, model, and upstream usage', async () => {
+    const policy = DEFAULT_POLICY_PROFILES.support_bot;
+    const sessionState: SessionState = { events: [], currentRisk: 0 };
+    const upstream = createMockSseResponse([
+      'data: {"choices":[{"delta":{"content":"Hello there."}}]}\n\n',
+      'data: {"choices":[],"usage":{"prompt_tokens":7,"completion_tokens":3,"total_tokens":10}}\n\n',
+      'data: [DONE]\n\n',
+    ]);
+    const { currentSeq } = getRecentGatewayEvents({ limit: 1 });
+
+    await interceptStream(upstream, createMockExpressResponse(), policy, 'Hi', sessionState, 2, {
+      tenantOrgId: 'org_stream',
+      tenantWorkspaceId: 'ws_stream',
+      sessionId: 'session-abc',
+      model: 'gemini-3.6-flash',
+      policyKey: 'support_bot',
+    });
+
+    const { events } = getRecentGatewayEvents({ afterSeq: currentSeq, limit: 10 });
+    const event = events[events.length - 1];
+    expect(event.tenantOrgId).toBe('org_stream');
+    expect(event.tenantWorkspaceId).toBe('ws_stream');
+    expect(event.model).toBe('gemini-3.6-flash');
+    expect(event.interaction.session_id).toBe('session-abc');
+    expect(event.interaction.metadata.model_name).toBe('gemini-3.6-flash');
+    expect(event.interaction.token_count.total).toBe(10);
   });
 });

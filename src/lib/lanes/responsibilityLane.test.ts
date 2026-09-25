@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { evaluateResponsibilityLane } from './responsibilityLane';
+import { evaluateResponsibilityLane, RULESET_VIOLATION_PENALTY } from './responsibilityLane';
 
 describe('evaluateResponsibilityLane', () => {
   describe('PII detection with Luhn validation', () => {
@@ -127,5 +127,36 @@ describe('evaluateResponsibilityLane', () => {
       expect(result.redacted_response).toContain('[REDACTED_PHONE]');
       expect(result.redacted_response).not.toContain('john@example.com');
     });
+  });
+});
+
+describe('Responsibility lane policy cutoffs', () => {
+  const emailResponse = 'You can reach the account owner at jane.doe@example.com for details.';
+
+  it('scores PII only at or above the PII severity cutoff (still redacting it)', () => {
+    const strict = evaluateResponsibilityLane(emailResponse, 'US_HIPAA_FINRA', 0.1, 0.4);
+    const lenient = evaluateResponsibilityLane(emailResponse, 'US_HIPAA_FINRA', 0.9, 0.4);
+    expect(strict.pii_detected.length).toBeGreaterThan(0);
+    expect(lenient.pii_detected.length).toBe(strict.pii_detected.length);
+    expect(lenient.redacted_response).toContain('[REDACTED_EMAIL]');
+    expect(strict.risk_score).toBeGreaterThan(0);
+    expect(lenient.risk_score).toBe(0);
+  });
+
+  it('scores toxicity only at or above the toxicity cutoff', () => {
+    const hostile = 'Stop wasting our time, you clearly cannot understand simple instructions.';
+    const strict = evaluateResponsibilityLane(hostile, 'US_HIPAA_FINRA', 0.3, 0.2);
+    const lenient = evaluateResponsibilityLane(hostile, 'US_HIPAA_FINRA', 0.3, 0.99);
+    expect(strict.toxicity_score).toBeGreaterThan(0);
+    expect(lenient.toxicity_score).toBe(strict.toxicity_score);
+    expect(strict.risk_score).toBeGreaterThan(lenient.risk_score);
+  });
+
+  it('raises risk for violations under the active geography ruleset', () => {
+    const eu = evaluateResponsibilityLane(emailResponse, 'EU_AI_ACT_STANDARD', 0.3, 0.4);
+    const us = evaluateResponsibilityLane(emailResponse, 'US_HIPAA_FINRA', 0.3, 0.4);
+    expect(eu.policy_violations.length).toBeGreaterThan(0);
+    expect(us.policy_violations.length).toBe(0);
+    expect(eu.risk_score).toBeCloseTo(us.risk_score + RULESET_VIOLATION_PENALTY, 3);
   });
 });

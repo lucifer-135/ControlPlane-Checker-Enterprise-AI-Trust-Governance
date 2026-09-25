@@ -35,6 +35,7 @@ export const DEFAULT_POLICY_PROFILES: Record<UseCaseId, PolicyProfile> = {
     },
     timeout_fallback: 'UNKNOWN_FLAG',
     version: '2.4.1-rc',
+    failMode: 'FAIL_OPEN',
   },
   internal_copilot: {
     use_case: 'internal_copilot',
@@ -65,6 +66,7 @@ export const DEFAULT_POLICY_PROFILES: Record<UseCaseId, PolicyProfile> = {
     },
     timeout_fallback: 'UNKNOWN_FLAG',
     version: '1.9.0',
+    failMode: 'FAIL_OPEN',
   },
   decision_support: {
     use_case: 'decision_support',
@@ -95,6 +97,7 @@ export const DEFAULT_POLICY_PROFILES: Record<UseCaseId, PolicyProfile> = {
     },
     timeout_fallback: 'BLOCK',
     version: '3.1.0-strict',
+    failMode: 'FAIL_CLOSED',
   },
 };
 
@@ -110,6 +113,7 @@ geography_ruleset: "${profile.geography_ruleset}"
 runtime_governance:
   latency_budget_ms: ${profile.latency_budget_ms}
   pre_response_blocking: ${profile.pre_response_blocking}
+  fail_mode: "${profile.failMode || 'FAIL_OPEN'}"
   timeout_fallback: "${profile.timeout_fallback}"
 
 active_lanes:

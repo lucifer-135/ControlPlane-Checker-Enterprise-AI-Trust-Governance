@@ -7,6 +7,9 @@ import { CostLaneResult, TokenUsage, UseCaseId } from '../../types';
 import { type QueryBaseline, getBaseline as getStaticBaseline } from '../../data/baselines';
 import { globalBaselineTracker } from '../rollingBaseline';
 
+/** Observations a (use_case, query_type) baseline needs before Z-scores are trusted. */
+export const MIN_BASELINE_SAMPLES = 30;
+
 export type BaselineGetter = (useCase: UseCaseId, queryType: string) => QueryBaseline;
 
 let activeBaselineGetter: BaselineGetter = (useCase, queryType) =>
@@ -45,6 +48,29 @@ export function evaluateCostLane(
 ): CostLaneResult {
   const baseline = baselineGetter(useCase, queryType);
 
+  // A workload without enough real observations has no meaningful baseline yet
+  // (e.g. a new long-context RAG workload scored against defaults sized for short
+  // chats). Z-scoring it would flag every request, and because baselines only
+  // learn from trusted traffic, the workload could never warm up. Only runaway
+  // tool loops are flagged until the baseline has MIN_BASELINE_SAMPLES.
+  if (baseline.sample_size < MIN_BASELINE_SAMPLES) {
+    const isRunawayLoop = toolCallsCount >= 4;
+    return {
+      lane: 'cost',
+      token_z_score: 0,
+      latency_z_score: 0,
+      combined_z_score: 0,
+      baseline_mean_tokens: baseline.mean_tokens,
+      baseline_mean_latency_ms: baseline.mean_latency_ms,
+      is_outlier: isRunawayLoop,
+      is_runaway_loop: isRunawayLoop,
+      risk_score: isRunawayLoop ? 0.95 : 0,
+      explanation: isRunawayLoop
+        ? `Critical Runaway Loop Alert: ${toolCallsCount} sequential tool retries (${tokenCount.total} tokens, ${latencyMs}ms).`
+        : `Baseline warming up (${baseline.sample_size}/${MIN_BASELINE_SAMPLES} observations for ${useCase}:${queryType}); cost anomaly scoring starts once the baseline is established.`,
+    };
+  }
+
   // Compute Z-scores for total tokens and latency
   const tokenZ = (tokenCount.total - baseline.mean_tokens) / baseline.stddev_tokens;
   const latencyZ = (latencyMs - baseline.mean_latency_ms) / baseline.stddev_latency_ms;
@@ -55,13 +81,15 @@ export function evaluateCostLane(
   const isRunawayLoop = toolCallsCount >= 4 || tokenCount.completion > baseline.mean_tokens * 3.5;
   const isOutlier = combinedZ >= zScoreCutoff || isRunawayLoop;
 
-  // Convert Z-score into normalized risk score [0.0, 1.0]
-  // Z <= 0 -> 0 risk; Z = 2 -> 0.6 risk; Z >= 4 -> 1.0 risk
+  // Convert Z-score into normalized risk score [0.0, 1.0], scaled by the policy cutoff:
+  // Z <= 0 -> 0 risk; Z = cutoff -> 0.5 risk; Z >= 2 × cutoff -> 1.0 risk
+  // (with the default cutoff of 2.0 this is Z / 4).
+  const safeCutoff = zScoreCutoff > 0 ? zScoreCutoff : 2.0;
   let riskScore = 0.0;
   if (isRunawayLoop) {
     riskScore = 0.95;
   } else if (combinedZ > 0) {
-    riskScore = Math.min(1.0, combinedZ / 4.0);
+    riskScore = Math.min(1.0, combinedZ / (2 * safeCutoff));
   }
 
   let explanation = `Normal resource consumption (Z-Score: ${combinedZ.toFixed(2)}, Latency: ${latencyMs}ms vs mean ${baseline.mean_latency_ms}ms).`;

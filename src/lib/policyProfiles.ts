@@ -13,7 +13,7 @@ export const DEFAULT_POLICY_PROFILES: Record<UseCaseId, PolicyProfile> = {
       'High-throughput, customer-facing tier. Strict against toxic language and PII disclosures with low added latency.',
     geography_ruleset: 'EU_AI_ACT_STANDARD',
     latency_budget_ms: 180,
-    pre_response_blocking: false,
+    pre_response_blocking: true,
     active_lanes: {
       performance: true,
       cost: true,

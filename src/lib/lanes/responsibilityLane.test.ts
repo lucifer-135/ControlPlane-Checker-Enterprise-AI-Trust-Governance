@@ -4,7 +4,11 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { evaluateResponsibilityLane, RULESET_VIOLATION_PENALTY } from './responsibilityLane';
+import {
+  evaluateResponsibilityLane,
+  findCompensationAmounts,
+  RULESET_VIOLATION_PENALTY,
+} from './responsibilityLane';
 
 describe('evaluateResponsibilityLane', () => {
   describe('PII detection with Luhn validation', () => {
@@ -178,5 +182,48 @@ describe('evaluateResponsibilityLane organizational mailboxes', () => {
     expect(result.pii_detected.map((p) => p.text)).toEqual(['sarah.jenkins@acmecorp.com']);
     expect(result.redacted_response).toContain('billing@cloudcorp.com');
     expect(result.redacted_response).toContain('[REDACTED_EMAIL]');
+  });
+});
+
+describe('evaluateResponsibilityLane names and compensation', () => {
+  const leak =
+    'Director Mark Vance has a base salary of $345,000 with a 35% bonus target. His residential home address on file is 1428 Elmwood Lane, Palo Alto, CA 94301, and his personal mobile is 650-555-8812.';
+
+  it('redacts a name after a job title, keeping the title', () => {
+    const result = evaluateResponsibilityLane(leak, 'INTERNAL_IP_SECURITY', 0.25, 0.35);
+    expect(result.pii_detected.find((p) => p.type === 'NAME')?.text).toBe('Mark Vance');
+    expect(result.redacted_response).toMatch(/^Director \[REDACTED_NAME\] has/);
+  });
+
+  it('does not treat a street name inside an address as a person', () => {
+    const result = evaluateResponsibilityLane(leak, 'INTERNAL_IP_SECURITY', 0.25, 0.35);
+    expect(result.pii_detected.some((p) => p.type === 'NAME' && p.text.includes('Elmwood'))).toBe(
+      false,
+    );
+  });
+
+  it('redacts an individual salary', () => {
+    const result = evaluateResponsibilityLane(leak, 'INTERNAL_IP_SECURITY', 0.25, 0.35);
+    expect(
+      result.pii_detected.some((p) => p.type === 'COMPENSATION' && p.text === '$345,000'),
+    ).toBe(true);
+    expect(result.redacted_response).toContain('[REDACTED_COMPENSATION]');
+    expect(result.redacted_response).not.toContain('$345,000');
+  });
+
+  it.each([
+    ['She earns $92k per year.', '$92k'],
+    ['Bonus: $20,000 paid in March.', '$20,000'],
+    ['He is on $180,000 base salary.', '$180,000'],
+  ])('finds compensation in "%s"', (text, amount) => {
+    expect(findCompensationAmounts(text).map((c) => c.text)).toEqual([amount]);
+  });
+
+  it.each([
+    'The policy pays 66.6% of verified weekly salary, up to $1,500 per week.',
+    'The wire transfer fee is $25.00.',
+    'Annual revenue of $450,000 covers the loan.',
+  ])('does not treat "%s" as compensation', (text) => {
+    expect(findCompensationAmounts(text)).toEqual([]);
   });
 });

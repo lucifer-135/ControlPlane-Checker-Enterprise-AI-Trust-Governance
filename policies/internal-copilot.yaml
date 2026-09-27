@@ -1,5 +1,5 @@
 # ControlPlane Checker Policy Profile
-# Generated: 2026-09-27T13:39:51.459Z
+# Generated: 2026-09-27T22:23:34.797Z
 version: "1.9.0"
 use_case: "internal_copilot"
 name: "Internal Knowledge Copilot Profile"

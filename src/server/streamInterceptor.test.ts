@@ -117,7 +117,8 @@ describe('StreamInterceptor', () => {
 // ── Regression tests: nothing sensitive reaches the client, even partially ──
 
 const strictPolicy = { ...DEFAULT_POLICY_PROFILES.decision_support, pre_response_blocking: true };
-const redactPolicy = DEFAULT_POLICY_PROFILES.support_bot;
+// Any policy without pre-response blocking redacts inline instead of cutting the stream
+const redactPolicy = { ...DEFAULT_POLICY_PROFILES.support_bot, pre_response_blocking: false };
 
 const contentChunk = (content: string) =>
   `data: ${JSON.stringify({ choices: [{ index: 0, delta: { content } }] })}\n\n`;

@@ -40,6 +40,7 @@ import {
 import type { JudgeProvider } from '../types';
 import { InteractionContextPanel } from './InteractionContextPanel';
 import { displayClaimSpans } from '../lib/findings';
+import { UserVisibleResponsePanel } from './UserVisibleResponse';
 import { deliveryTreatment, piiTypeLabel } from '../lib/deliveryTreatment';
 import { averageOverheadMs, useCaseStreamStats, USE_CASE_LABELS } from '../lib/metrics';
 
@@ -953,6 +954,11 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
                           <div className="bg-white/90 border border-slate-200 rounded-xl p-4 min-h-[100px] shadow-inner">
                             {renderHighlightedResponse(item.response, evalRes)}
                           </div>
+
+                          <UserVisibleResponsePanel
+                            evaluation={evalRes}
+                            originalResponse={item.response}
+                          />
                         </div>
 
                         {/* Triggering Spans legend */}

@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import { InteractionContextPanel } from './InteractionContextPanel';
 import { displayClaimSpans } from '../lib/findings';
+import { UserVisibleResponsePanel } from './UserVisibleResponse';
 
 interface ReviewQueueTabProps {
   interactions: SyntheticInteraction[];
@@ -592,9 +593,15 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
                             <span className="text-[11px] text-[#667085] font-medium">
                               AI model response
                             </span>
-                            <span className="inline-flex items-center text-[10px] text-[#B42318] font-semibold bg-[#FEF3F2] px-2 py-0.5 rounded-md border border-[#FECDCA]">
-                              Withheld
-                            </span>
+                            {evalRes.is_pre_response_blocked ? (
+                              <span className="inline-flex items-center text-[10px] text-[#B42318] font-semibold bg-[#FEF3F2] px-2 py-0.5 rounded-md border border-[#FECDCA]">
+                                Withheld
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center text-[10px] text-[#B54708] font-semibold bg-[#FFFAEB] px-2 py-0.5 rounded-md border border-[#FEDF89]">
+                                Delivered · Post-Delivery Review
+                              </span>
+                            )}
                           </div>
 
                           {isEditing ? (
@@ -622,9 +629,15 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
                               </div>
                             </div>
                           ) : (
-                            <div className="bg-white/90 p-3.5 rounded-xl border border-slate-200 shadow-inner">
-                              {renderHighlightedResponse(item.response, evalRes)}
-                            </div>
+                            <>
+                              <div className="bg-white/90 p-3.5 rounded-xl border border-slate-200 shadow-inner">
+                                {renderHighlightedResponse(item.response, evalRes)}
+                              </div>
+                              <UserVisibleResponsePanel
+                                evaluation={evalRes}
+                                originalResponse={item.response}
+                              />
+                            </>
                           )}
 
                           {/* Triggering Violations Legend */}

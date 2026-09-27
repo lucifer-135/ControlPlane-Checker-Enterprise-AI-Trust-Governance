@@ -136,7 +136,8 @@ export interface DetectedEntity {
     | 'ACCOUNT_NO'
     | 'IP_ADDRESS'
     | 'ADDRESS'
-    | 'POSSIBLE_NUMERIC_ID';
+    | 'POSSIBLE_NUMERIC_ID'
+    | 'COMPENSATION';
   text: string;
   span_start?: number;
   span_end?: number;

@@ -1,5 +1,5 @@
 # ControlPlane Checker Policy Profile
-# Generated: 2026-09-27T13:39:51.456Z
+# Generated: 2026-09-27T22:23:34.794Z
 version: "2.4.1-rc"
 use_case: "support_bot"
 name: "Customer Support Bot Profile"

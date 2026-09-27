@@ -52,6 +52,7 @@ describe('Gateway OpenAI wire compatibility', () => {
   let policiesDir: string;
   let serviceKey: string;
   let strictKey: string;
+  let deliveringKey: string;
   let upstream: (url: string, body: any) => Response;
   let upstreamUrls: string[];
   const savedAnthropicKey = process.env.ANTHROPIC_API_KEY;
@@ -78,6 +79,8 @@ describe('Gateway OpenAI wire compatibility', () => {
     policiesDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cp-compat-policies-'));
     serviceKey = createNewApiKey('org_c', 'ws1', '', 'support_bot', 1000, 'service').rawKey;
     strictKey = createNewApiKey('org_c', 'ws1', '', 'decision_support', 1000, 'service').rawKey;
+    // internal_copilot does not pre-block, so escalations are still delivered (redacted)
+    deliveringKey = createNewApiKey('org_c', 'ws1', '', 'internal_copilot', 1000, 'service').rawKey;
     created = createApp({ authMode: 'required', policiesDir });
     server = http.createServer(created.app);
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
@@ -150,8 +153,10 @@ describe('Gateway OpenAI wire compatibility', () => {
         );
       const body = await (await post(ask({ n: 2 }))).json();
       expect(body.choices.map((c: any) => c.index)).toEqual([0, 1]);
-      expect(body.choices[0].message.content).toBe('First answer.');
-      expect(body.choices[1].message.content).toBe('Reach [REDACTED_EMAIL].');
+      // Each choice keeps its own text; PII is redacted where it appears
+      expect(body.choices[0].message.content.startsWith('First answer.')).toBe(true);
+      expect(body.choices[1].message.content.startsWith('Reach [REDACTED_EMAIL].')).toBe(true);
+      expect(JSON.stringify(body)).not.toContain('sarah.jenkins@acmecorp.com');
     });
 
     it('keeps refusal, annotations, logprobs and top-level fields', async () => {
@@ -197,7 +202,7 @@ describe('Gateway OpenAI wire compatibility', () => {
             },
           ]),
         );
-      const resp = await post(ask());
+      const resp = await post(ask(), deliveringKey);
       const body = await resp.json();
       const args = body.choices[0].message.tool_calls[0].function.arguments;
       expect(JSON.stringify(body)).not.toContain('219-09-9999');

@@ -21,6 +21,12 @@ vi.mock('../lib/decisionEngine.js', async (importOriginal) => {
 
 const DISCLAIMER = 'flagged for potential accuracy concerns';
 
+// These tests cover escalations that are still delivered, so the policy must not pre-block
+const NON_BLOCKING_PROFILES = {
+  ...DEFAULT_POLICY_PROFILES,
+  support_bot: { ...DEFAULT_POLICY_PROFILES.support_bot, pre_response_blocking: false },
+};
+
 function mockUpstream(content: string) {
   global.fetch = vi.fn().mockResolvedValue({
     ok: true,
@@ -80,7 +86,7 @@ describe('Gateway disclaimers for delivered escalations', () => {
       r.performance.is_confidently_wrong = true;
     });
     const { req, res } = createMockReqRes();
-    await handleChatCompletions(req, res, { ...DEFAULT_POLICY_PROFILES });
+    await handleChatCompletions(req, res, NON_BLOCKING_PROFILES);
 
     expect(res.body.governance.verdict).toBe('BLOCK_ESCALATE');
     expect(res.body.choices[0].message.content).toContain('unconditional cash refund');
@@ -93,7 +99,7 @@ describe('Gateway disclaimers for delivered escalations', () => {
       r.verdict = 'SOFT_CORRECT';
     });
     const { req, res } = createMockReqRes();
-    await handleChatCompletions(req, res, { ...DEFAULT_POLICY_PROFILES });
+    await handleChatCompletions(req, res, NON_BLOCKING_PROFILES);
 
     const content = res.body.choices[0].message.content;
     expect(content).toContain('[REDACTED_EMAIL]');
@@ -104,7 +110,7 @@ describe('Gateway disclaimers for delivered escalations', () => {
   it('does not add an accuracy disclaimer to an answer escalated only for PII', async () => {
     mockUpstream('The customer SSN is 078-05-1120.');
     const { req, res } = createMockReqRes();
-    await handleChatCompletions(req, res, { ...DEFAULT_POLICY_PROFILES });
+    await handleChatCompletions(req, res, NON_BLOCKING_PROFILES);
 
     expect(res.body.governance.verdict).toBe('BLOCK_ESCALATE');
     expect(res.body.choices[0].message.content).toBe('The customer SSN is [REDACTED_SSN].');

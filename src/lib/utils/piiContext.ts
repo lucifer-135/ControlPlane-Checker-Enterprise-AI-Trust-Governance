@@ -142,10 +142,18 @@ export function computeContextualBoost(
     .split(/\s+/)
     .filter((t) => t.length > 1);
 
+  // The window spans N tokens before the match and N tokens after its end, so a
+  // multi-word match ("Director Mark Vance") does not use up the window itself
   const matchTokenIndex = beforeMatch.length;
+  const matchTokenCount = fullText
+    .substring(matchStart, matchEnd)
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter((t) => t.length > 1).length;
   const windowTokens = tokens.slice(
     Math.max(0, matchTokenIndex - windowSize),
-    matchTokenIndex + windowSize,
+    matchTokenIndex + matchTokenCount + windowSize,
   );
 
   const windowText = windowTokens.join(' ');

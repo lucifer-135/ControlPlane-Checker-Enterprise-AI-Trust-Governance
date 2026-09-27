@@ -182,7 +182,10 @@ describe('Gateway Handler (handleChatCompletions)', () => {
       { 'x-policy-profile': 'support_bot' },
     );
 
-    await handleChatCompletions(req, res, policyProfiles);
+    await handleChatCompletions(req, res, {
+      ...policyProfiles,
+      support_bot: { ...policyProfiles.support_bot, pre_response_blocking: false },
+    });
 
     expect(res.statusCode).toBe(200);
     expect(res.headers['X-ControlPlane-Verdict']).toBe('BLOCK_ESCALATE');

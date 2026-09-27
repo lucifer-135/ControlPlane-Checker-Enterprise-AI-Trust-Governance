@@ -25,7 +25,7 @@ import crypto from 'crypto';
 import type { Request, Response } from 'express';
 import { evaluateInteraction } from '../lib/decisionEngine.js';
 import { evaluateResponsibilityLane } from '../lib/lanes/responsibilityLane.js';
-import { needsAccuracyDisclaimer } from '../lib/deliveryTreatment.js';
+import { deliveryNote, WITHHELD_RESPONSE } from '../lib/deliveryTreatment.js';
 import type {
   ConversationTurn,
   EvaluationResult,
@@ -261,9 +261,6 @@ function safeFallbackCompletion(reason: string, modelsAttempted: string[]) {
 // Response & error shaping (OpenAI wire compatibility)
 // ──────────────────────────────────────────────────────────────────────
 
-const ACCURACY_DISCLAIMER =
-  '\n\n---\n⚠️ *This response has been flagged for potential accuracy concerns. Please verify the information independently before acting on it.*';
-
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0;
 }
@@ -290,17 +287,17 @@ function redactPiiText(text: string, policy: PolicyProfile): string {
 
 /**
  * Applies governance to one upstream choice without dropping any of its fields:
- * PII is redacted in content and tool/function-call arguments, and the accuracy
- * disclaimer is appended to non-empty content.
+ * PII is redacted in content and tool/function-call arguments, and the delivery
+ * note (accuracy warning or verification note) is appended to non-empty content.
  */
-function governChoice(choice: any, policy: PolicyProfile, addDisclaimer: boolean): any {
+function governChoice(choice: any, policy: PolicyProfile, note: string | null): any {
   const message = choice?.message;
   if (!message || typeof message !== 'object') return choice;
 
   const governed: any = { ...message };
   if (typeof governed.content === 'string') {
     governed.content = redactPiiText(governed.content, policy);
-    if (addDisclaimer && governed.content) governed.content += ACCURACY_DISCLAIMER;
+    if (note && governed.content) governed.content += note;
   }
   if (Array.isArray(governed.tool_calls)) {
     governed.tool_calls = governed.tool_calls.map((tc: any) =>
@@ -898,8 +895,7 @@ export async function handleChatCompletions(
         index,
         message: {
           role: 'assistant',
-          content:
-            "I'm unable to provide this response as it has been flagged by our governance system. A human reviewer has been notified.",
+          content: WITHHELD_RESPONSE,
         },
         finish_reason: 'content_filter',
         logprobs: null,
@@ -929,13 +925,13 @@ export async function handleChatCompletions(
       return;
     }
 
-    const addDisclaimer = needsAccuracyDisclaimer(evaluation);
+    const note = deliveryNote(evaluation);
 
     // Keep the upstream response intact (all choices, tool calls, refusal, annotations,
-    // logprobs); only redact PII in text and tool arguments and append the disclaimer
+    // logprobs); only redact PII in text and tool arguments and append the delivery note
     res.json({
       ...upstreamData,
-      choices: upstreamChoices.map((choice) => governChoice(choice, policy, addDisclaimer)),
+      choices: upstreamChoices.map((choice) => governChoice(choice, policy, note)),
       governance: {
         verdict: evaluation.verdict,
         composite_risk_score: evaluation.composite_risk_score,

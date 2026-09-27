@@ -110,6 +110,78 @@ const ADDRESS_REGEX =
   /\b\d+\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s+(?:Lane|Street|St|Avenue|Ave|Boulevard|Blvd|Drive|Dr|Road|Rd|Way|Court|Ct|Place|Pl|Circle|Cir|Terrace|Ter)\.?(?:,?\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)?(?:,?\s+[A-Z]{2}\s+\d{5}(?:-\d{4})?)?/g;
 
 // ──────────────────────────────────────────────────────────────────────
+// Compensation Detection (salary, bonus, pay figures about a person)
+// ──────────────────────────────────────────────────────────────────────
+
+const AMOUNT = String.raw`\$\s?\d[\d,]*(?:\.\d+)?(?:\s?[kKmM]\b)?`;
+/** "salary of $345,000", "earns $92k", "bonus: $20,000" */
+const COMPENSATION_AFTER_KEYWORD = new RegExp(
+  String.raw`\b(?:salary|salaries|compensation|base pay|pay|wages?|earns?|earning|bonus|remuneration)\b[^.$\n]{0,40}?(${AMOUNT})`,
+  'gi',
+);
+/** "$345,000 base salary", "$92k per year" */
+const COMPENSATION_BEFORE_KEYWORD = new RegExp(
+  String.raw`(${AMOUNT})(?=\s+(?:annual\s+|base\s+|yearly\s+)?(?:salary|bonus|compensation|pay\b|per year|a year|\/yr))`,
+  'gi',
+);
+
+const POLICY_CAP_WORDS = /\b(?:up to|maximum|max|capped|cap|limit|not exceed|at most)\b/i;
+
+/** Money amounts that describe a person's pay; with offsets of the amount itself. */
+export function findCompensationAmounts(
+  text: string,
+): { text: string; span_start: number; span_end: number }[] {
+  const found = new Map<number, { text: string; span_start: number; span_end: number }>();
+  for (const m of text.matchAll(COMPENSATION_AFTER_KEYWORD)) {
+    const amount = m[1];
+    // "salary, up to $1,500 per week" states a policy cap, not someone's pay
+    if (POLICY_CAP_WORDS.test(m[0].slice(0, m[0].length - amount.length))) continue;
+    const start = m.index! + m[0].length - amount.length;
+    found.set(start, { text: amount, span_start: start, span_end: start + amount.length });
+  }
+  for (const m of text.matchAll(COMPENSATION_BEFORE_KEYWORD)) {
+    found.set(m.index!, { text: m[1], span_start: m.index!, span_end: m.index! + m[1].length });
+  }
+  return [...found.values()].sort((a, b) => a.span_start - b.span_start);
+}
+
+/** Job titles kept visible in front of a redacted name ("Director [REDACTED_NAME]"). */
+const JOB_TITLES = new Set([
+  'director',
+  'manager',
+  'officer',
+  'president',
+  'chairman',
+  'chairwoman',
+  'executive',
+  'head',
+  'chief',
+  'senior',
+  'lead',
+  'vp',
+  'ceo',
+  'cfo',
+  'cto',
+  'coo',
+  'mr',
+  'mrs',
+  'ms',
+  'dr',
+  'prof',
+]);
+
+function withoutLeadingJobTitle<T extends { text: string; start: number; end: number }>(
+  entity: T,
+): T {
+  const words = entity.text.split(/\s+/);
+  let skip = 0;
+  while (skip < words.length - 2 && JOB_TITLES.has(words[skip].toLowerCase())) skip++;
+  if (skip === 0) return entity;
+  const offset = entity.text.indexOf(words[skip]);
+  return { ...entity, text: entity.text.slice(offset), start: entity.start + offset };
+}
+
+// ──────────────────────────────────────────────────────────────────────
 // Generalized Name Detection (replaces SENSITIVE_NAMES hardcoded array)
 // ──────────────────────────────────────────────────────────────────────
 
@@ -118,7 +190,10 @@ const ADDRESS_REGEX =
  * A name is flagged only if it appears in a sensitive personal data context
  * (near salary, address, SSN, DOB, etc.).
  */
-function detectSensitiveNames(response: string): {
+function detectSensitiveNames(
+  response: string,
+  excludedSpans: { start: number; end: number }[] = [],
+): {
   entities: DetectedEntity[];
   spans: SpanHighlight[];
 } {
@@ -127,7 +202,10 @@ function detectSensitiveNames(response: string): {
 
   // Use the entity extractor's proper name detection
   const extracted = extractEntities(response);
-  const nameEntities = extracted.filter((e) => e.type === 'PROPER_NAME');
+  const nameEntities = extracted
+    .filter((e) => e.type === 'PROPER_NAME')
+    .filter((e) => !excludedSpans.some((x) => e.start < x.end && e.end > x.start))
+    .map(withoutLeadingJobTitle);
 
   for (const nameEntity of nameEntities) {
     // Only flag if the name appears in a sensitive personal data context
@@ -224,6 +302,7 @@ export const PII_TYPE_SEVERITY: Record<DetectedEntity['type'], number> = {
   CREDIT_CARD: 1.0,
   ACCOUNT_NO: 0.8,
   ADDRESS: 0.6,
+  COMPENSATION: 0.6,
   NAME: 0.5,
   PHONE: 0.45,
   EMAIL: 0.4,
@@ -337,8 +416,23 @@ export function evaluateResponsibilityLane(
     redactedResponse = redactedResponse.replace(addressText, '[REDACTED_ADDRESS]');
   }
 
+  // ── 2b. Scan for compensation figures (salary, bonus, pay) ──
+  for (const comp of findCompensationAmounts(response)) {
+    detectedPii.push({ type: 'COMPENSATION', ...comp });
+    triggeringSpans.push({
+      text: comp.text,
+      type: 'pii',
+      reason: `Disclosed individual compensation: "${comp.text}"`,
+    });
+    redactedResponse = redactedResponse.replace(comp.text, '[REDACTED_COMPENSATION]');
+  }
+
   // ── 3. Scan for sensitive names (generalized, context-aware) ──
-  const { entities: nameEntities, spans: nameSpans } = detectSensitiveNames(response);
+  // Street names inside an address already found are not person names
+  const addressSpans = detectedPii
+    .filter((p) => p.type === 'ADDRESS')
+    .map((p) => ({ start: p.span_start, end: p.span_end }));
+  const { entities: nameEntities, spans: nameSpans } = detectSensitiveNames(response, addressSpans);
   for (const ne of nameEntities) {
     detectedPii.push(ne);
     redactedResponse = redactedResponse.replace(ne.text, '[REDACTED_NAME]');

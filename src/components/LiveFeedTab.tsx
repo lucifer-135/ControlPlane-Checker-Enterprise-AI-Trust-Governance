@@ -39,6 +39,24 @@ import {
 } from 'lucide-react';
 import type { JudgeProvider } from '../types';
 import { InteractionContextPanel } from './InteractionContextPanel';
+import { displayClaimSpans } from '../lib/findings';
+import { deliveryTreatment, piiTypeLabel } from '../lib/deliveryTreatment';
+import { averageOverheadMs, useCaseStreamStats, USE_CASE_LABELS } from '../lib/metrics';
+
+/** One sentence describing what the client received for a delivered escalation. */
+function describeDeliveredEscalation(evalRes: Parameters<typeof deliveryTreatment>[0]): string {
+  const { redactedTypes, accuracyWarning } = deliveryTreatment(evalRes);
+  const changes: string[] = [];
+  if (redactedTypes.length > 0) {
+    changes.push(`with ${redactedTypes.map(piiTypeLabel).join(', ')} redacted`);
+  }
+  if (accuracyWarning) changes.push('an accuracy warning appended');
+  const delivered =
+    changes.length > 0
+      ? `Delivered to the client ${changes.join(' and ')}`
+      : 'Delivered to the client unchanged';
+  return `${delivered}, and queued for human review. Below is the original response, kept for audit.`;
+}
 
 interface LiveFeedTabProps {
   /** Replayable dataset; playback controls apply only to these. */
@@ -222,15 +240,8 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
   const totalOverlaps = streamedInteractions.filter(
     (i) => evaluations[i.id]?.has_multi_lane_overlap,
   ).length;
-  const avgOverhead =
-    totalStreamed > 0
-      ? Math.round(
-          streamedInteractions.reduce(
-            (acc, i) => acc + (evaluations[i.id]?.added_overhead_latency_ms || 82),
-            0,
-          ) / totalStreamed,
-        )
-      : 82;
+  const avgOverhead = averageOverheadMs(streamedInteractions, evaluations);
+  const useCaseStats = useCaseStreamStats(streamedInteractions, evaluations);
 
   const renderHighlightedResponse = (response: string, evalRes: EvaluationResult) => {
     const spans = [
@@ -361,26 +372,22 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
             </div>
           </div>
 
-          {/* Regional Latency & Progress Breakdown */}
+          {/* Per-use-case breakdown of the streamed interactions */}
           <div className="relative z-10 pt-3.5 border-t border-slate-200 grid grid-cols-3 gap-4 text-xs">
-            <div className="glass-inset p-2.5 rounded-xl">
-              <div className="text-[11px] text-[#667085] font-medium">US-East</div>
-              <div className="text-[#175CD3] font-semibold text-xs mt-0.5">
-                <span className="font-mono tnum">118ms</span> · RAG Active
+            {useCaseStats.map((s, idx) => (
+              <div key={s.useCase} className="glass-inset p-2.5 rounded-xl">
+                <div className="text-[11px] text-[#667085] font-medium">
+                  {USE_CASE_LABELS[s.useCase]}
+                </div>
+                <div
+                  className={`${['text-[#175CD3]', 'text-[#6941C6]', 'text-[#B54708]'][idx]} font-semibold text-xs mt-0.5`}
+                >
+                  <span className="font-mono tnum">{s.count}</span> req ·{' '}
+                  <span className="font-mono tnum">{s.blocked}</span> blocked ·{' '}
+                  <span className="font-mono tnum">+{s.avgOverheadMs}ms</span>
+                </div>
               </div>
-            </div>
-            <div className="glass-inset p-2.5 rounded-xl">
-              <div className="text-[11px] text-[#667085] font-medium">EU-West</div>
-              <div className="text-[#6941C6] font-semibold text-xs mt-0.5">
-                <span className="font-mono tnum">132ms</span> · EU AI Act
-              </div>
-            </div>
-            <div className="glass-inset p-2.5 rounded-xl">
-              <div className="text-[11px] text-[#667085] font-medium">AP-South</div>
-              <div className="text-[#B54708] font-semibold text-xs mt-0.5">
-                <span className="font-mono tnum">185ms</span> · Multi-Lane
-              </div>
-            </div>
+            ))}
           </div>
         </div>
 
@@ -937,9 +944,8 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
                             <div className="mb-2.5 p-2.5 rounded-xl bg-[#FFFAEB] border border-[#FEDF89] text-[11px] text-[#B54708] flex items-center gap-2">
                               <ShieldAlert className="h-4 w-4 shrink-0 text-[#DC6803]" />
                               <span>
-                                <strong>Pre-Response Blocking Inactive:</strong> Response was
-                                delivered to client and asynchronously queued for frontline human
-                                triage.
+                                <strong>Pre-Response Blocking Inactive:</strong>{' '}
+                                {describeDeliveredEscalation(evalRes)}
                               </span>
                             </div>
                           ) : null}
@@ -957,9 +963,10 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
                               Triggering violations
                             </span>
                             <div className="flex flex-wrap gap-2">
-                              {evalRes.performance.triggering_spans.map((s, idx) => (
+                              {displayClaimSpans(evalRes).map((s, idx) => (
                                 <span
                                   key={`perf-${idx}`}
+                                  title={s.reason}
                                   className="px-2.5 py-0.5 rounded-lg bg-[#FEF3F2]/90 text-[#B42318] border border-[#FECDCA] text-[10px] font-medium shadow-xs"
                                 >
                                   Claim Mismatch: "{s.text}"

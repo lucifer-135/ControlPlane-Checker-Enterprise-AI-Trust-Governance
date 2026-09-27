@@ -78,3 +78,35 @@ describe('detectContradictions absolute denials', () => {
     expect(result.contradictions.some((c) => c.reason.includes('absolute denial'))).toBe(false);
   });
 });
+
+describe('detectContradictions monetary amounts', () => {
+  const feeContext =
+    'Invoices not paid within 30 days of the due date incur a flat late fee of $25.00 per invoice.';
+
+  it('flags a fee quoted one dollar off the policy', () => {
+    const result = detectContradictions(
+      'A flat late fee of $24.00 is added to the invoice.',
+      feeContext,
+    );
+    expect(result.contradictions.some((c) => c.reason.startsWith('Monetary contradiction'))).toBe(
+      true,
+    );
+  });
+
+  it('does not flag the exact amount', () => {
+    const result = detectContradictions('A flat late fee of $25 is added.', feeContext);
+    expect(result.contradictions.some((c) => c.reason.startsWith('Monetary contradiction'))).toBe(
+      false,
+    );
+  });
+
+  it('does not compare amounts that describe different things', () => {
+    const result = detectContradictions(
+      'Your annual platform fee is $4,850.00.',
+      'Wire transfers cost $15.00 each.',
+    );
+    expect(result.contradictions.some((c) => c.reason.startsWith('Monetary contradiction'))).toBe(
+      false,
+    );
+  });
+});

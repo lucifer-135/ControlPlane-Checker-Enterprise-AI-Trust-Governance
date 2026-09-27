@@ -76,6 +76,16 @@ function computeSessionRisk(
   return Math.min(1.0, currentTurnRisk + accumulated);
 }
 
+/** Bias categories that always escalate, whatever the weighted score. */
+const PROTECTED_CLASS_BIAS = [
+  'Redlining',
+  'Gender',
+  'Xenophobia',
+  'Racial',
+  'Ageism',
+  'Disability',
+];
+
 // ──────────────────────────────────────────────────────────────────────
 // Core Interaction Evaluator
 // ──────────────────────────────────────────────────────────────────────
@@ -216,8 +226,10 @@ export function evaluateInteraction(
 
   // Hard governance overrides for non-negotiable compliance risks
   if (
-    responsibility.bias_flags.some(
-      (b) => b.includes('Redlining') || b.includes('Gender') || b.includes('Xenophobia'),
+    // Discrimination against a protected class (fair-lending, equality and
+    // anti-discrimination law); plain insults are scored, not forced
+    responsibility.bias_flags.some((b) =>
+      PROTECTED_CLASS_BIAS.some((category) => b.includes(category)),
     ) ||
     responsibility.pii_detected.some((p) => p.type === 'SSN' || p.type === 'CREDIT_CARD') ||
     cost.is_runaway_loop ||

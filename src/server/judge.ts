@@ -13,7 +13,8 @@
  * 4. Autonomous Heuristic Evaluator (Deterministic fallback when endpoints are unavailable)
  */
 
-import { GoogleGenAI } from '@google/genai';
+import crypto from 'crypto';
+import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 import { evaluatePerformanceLane } from '../lib/lanes/performanceLane.js';
 import type { UseCaseId } from '../types.js';
 
@@ -41,6 +42,8 @@ export interface SingleJudgeResult {
   triggeringSpans: string[];
   latencyMs: number;
   error?: string;
+  /** Served from the judge cache; latencyMs is the original judgement time. */
+  cached?: boolean;
 }
 
 export interface DualJudgeResult {
@@ -65,6 +68,8 @@ export interface DualJudgeResult {
     gemini: SingleJudgeResult;
     local: SingleJudgeResult;
   };
+  /** Served from the judge cache; latencyMs is the original judgement time. */
+  cached?: boolean;
 }
 
 export type JudgeEvaluationResponse = SingleJudgeResult | DualJudgeResult;
@@ -139,6 +144,7 @@ Your role is to rigorously adjudicate AI interactions for Groundedness, Hallucin
    - 0.5 - 0.7: Partial overlap. Some facts are supported, but others are unverified or extrapolated.
    - 0.0 - 0.3: Fabricated, contradictory, or completely unsupported by the retrieved context.
    - Note: If no context is provided, evaluate based on general factual correctness.
+   - Figures must match exactly: compare every amount, fee, price, percentage, limit, duration and date in the response with the context. A figure that differs from the context for the same thing (even $24 vs $25, or 13 days vs 14) is a contradiction: groundedness 0.0 - 0.3, and quote that figure in "triggeringSpans".
 
 2. "certaintyScore" (0.0 to 1.0):
    - 0.8 - 1.0: Linguistic absolutes, explicit guarantees, certifications ("guaranteed", "100%", "definitely", "unconditionally", "zero exception").
@@ -460,13 +466,80 @@ export async function executeLocalQwenJudge(
   }
 }
 
+export interface GeminiJudgeTiming {
+  /** A model that has not answered by now gets the next model started alongside it. */
+  hedgeDelayMs: number;
+  /** Hard cap on a single model call. */
+  attemptTimeoutMs: number;
+  /** Total time before falling back to the heuristic judge. */
+  totalBudgetMs: number;
+}
+
+export const DEFAULT_GEMINI_JUDGE_TIMING: GeminiJudgeTiming = {
+  hedgeDelayMs: Number(process.env.GEMINI_JUDGE_HEDGE_MS) || 2500,
+  attemptTimeoutMs: Number(process.env.GEMINI_JUDGE_ATTEMPT_TIMEOUT_MS) || 6000,
+  totalBudgetMs: Number(process.env.GEMINI_JUDGE_BUDGET_MS) || 12000,
+};
+
+/** At most this many models are in flight at once (the primary plus two backups). */
+const MAX_PARALLEL_GEMINI_CALLS = 3;
+
+/** Models that rejected minimal thinking; they are called without a thinking config. */
+const modelsWithoutMinimalThinking = new Set<string>();
+
+function isThinkingConfigRejected(err: any): boolean {
+  const msg = String(err?.message || '').toLowerCase();
+  return msg.includes('thinking') && (Number(err?.status) === 400 || msg.includes('not supported'));
+}
+
 /**
- * Evaluates an interaction using Google Gemini with exponential backoff, randomized jitter, and model tier fallbacks.
+ * One Gemini call. Minimal thinking keeps a small JSON verdict fast; a model that
+ * does not support it is retried once without, and remembered.
+ */
+async function callGeminiModel(
+  aiClient: GoogleGenAI,
+  model: string,
+  userContent: string,
+  signal: AbortSignal,
+): Promise<string> {
+  const request = (minimalThinking: boolean) =>
+    aiClient.models.generateContent({
+      model,
+      contents: userContent,
+      config: {
+        systemInstruction: SYSTEM_PROMPT,
+        responseMimeType: 'application/json',
+        temperature: 0,
+        abortSignal: signal,
+        ...(minimalThinking ? { thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL } } : {}),
+      },
+    });
+
+  let response;
+  try {
+    response = await request(!modelsWithoutMinimalThinking.has(model));
+  } catch (err) {
+    if (modelsWithoutMinimalThinking.has(model) || !isThinkingConfigRejected(err)) throw err;
+    modelsWithoutMinimalThinking.add(model);
+    response = await request(false);
+  }
+  if (!response.text) throw new Error('empty response');
+  return response.text.trim();
+}
+
+/**
+ * Evaluates an interaction using Google Gemini.
+ *
+ * Latency is bounded rather than retried away: the primary model is called first;
+ * if it has not answered within the hedge delay, the next model is started alongside
+ * it and the first valid answer wins (the other call is cancelled). A failed model
+ * hands over to the next one immediately, every call has a hard timeout, and when
+ * the total budget runs out the heuristic judge answers instead.
  */
 export async function executeGeminiJudge(
   options: JudgeRequestOptions,
   aiClient: GoogleGenAI | null,
-  maxRetriesPerModel: number = 3,
+  timing: GeminiJudgeTiming = DEFAULT_GEMINI_JUDGE_TIMING,
 ): Promise<SingleJudgeResult> {
   const startTime = Date.now();
   const fallback = generateDynamicJudgeFallback(
@@ -479,61 +552,73 @@ export async function executeGeminiJudge(
   }
 
   const userContent = buildUserContent(options);
+  const controllers: AbortController[] = [];
 
-  for (const model of GEMINI_MODELS) {
-    for (let attempt = 0; attempt < maxRetriesPerModel; attempt++) {
-      try {
-        const response = await aiClient.models.generateContent({
-          model,
-          contents: userContent,
-          config: {
-            systemInstruction: SYSTEM_PROMPT,
-            responseMimeType: 'application/json',
-          },
-        });
+  const winner = await new Promise<{ model: string; text: string } | null>((resolve) => {
+    let nextModel = 0;
+    let inFlight = 0;
+    let settled = false;
+    let hedgeTimer: ReturnType<typeof setTimeout> | undefined;
 
-        if (response.text) {
-          const latencyMs = Date.now() - startTime;
-          const result = normalizeJudgeOutput(
-            response.text.trim(),
-            'gemini',
-            model,
-            latencyMs,
-            fallback,
-          );
-          console.log(
-            `[Judge API - Gemini] Evaluated via ${model} in ${latencyMs}ms -> Verdict: ${result.verdict} (Grounded: ${result.groundednessScore}, Cert: ${result.certaintyScore}, Mismatch: ${result.certaintySupportMismatch})`,
-          );
-          return result;
-        }
-      } catch (err: any) {
-        const errMsg = String(err?.message || '').toLowerCase();
-        const isQuotaOrCapacity =
-          errMsg.includes('quota') ||
-          errMsg.includes('429') ||
-          errMsg.includes('high demand') ||
-          errMsg.includes('503');
-        const retryable = isRetryableGeminiError(err) && !isQuotaOrCapacity;
-        const hasMoreAttempts = attempt < maxRetriesPerModel - 1;
+    const finish = (value: { model: string; text: string } | null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(budgetTimer);
+      clearTimeout(hedgeTimer);
+      for (const c of controllers) c.abort();
+      resolve(value);
+    };
 
-        if (retryable && hasMoreAttempts) {
-          const delayMs = calculateBackoffWithJitter(attempt, 1000, 8000, 300);
-          console.warn(
-            `[GeminiJudge] Model ${model} returned transient error (${err.message.slice(0, 120)}). Pausing for ${delayMs}ms (attempt ${attempt + 1}/${maxRetriesPerModel})...`,
-          );
-          await sleep(delayMs);
-        } else {
-          console.warn(
-            `[GeminiJudge] Model ${model} unavailable (${err.message.slice(0, 120)}), switching to next model tier immediately...`,
-          );
-          break;
-        }
+    const budgetTimer = setTimeout(() => {
+      console.warn(
+        `[GeminiJudge] No model answered within ${timing.totalBudgetMs}ms; using the heuristic judge`,
+      );
+      finish(null);
+    }, timing.totalBudgetMs);
+
+    const launch = () => {
+      if (settled) return;
+      clearTimeout(hedgeTimer);
+      if (nextModel >= GEMINI_MODELS.length) {
+        if (inFlight === 0) finish(null);
+        return;
       }
-    }
-  }
+      const model = GEMINI_MODELS[nextModel++];
+      const controller = new AbortController();
+      controllers.push(controller);
+      const attemptTimer = setTimeout(() => controller.abort(), timing.attemptTimeoutMs);
+      inFlight++;
+
+      callGeminiModel(aiClient, model, userContent, controller.signal)
+        .then((text) => finish({ model, text }))
+        .catch((err: any) => {
+          inFlight--;
+          if (settled) return;
+          const reason = controller.signal.aborted
+            ? `no answer within ${timing.attemptTimeoutMs}ms`
+            : String(err?.message || err).slice(0, 120);
+          console.warn(`[GeminiJudge] ${model} failed (${reason}); trying the next model`);
+          launch();
+        })
+        .finally(() => clearTimeout(attemptTimer));
+
+      // Still waiting after the hedge delay: start a backup alongside it
+      hedgeTimer = setTimeout(() => {
+        if (inFlight < MAX_PARALLEL_GEMINI_CALLS) launch();
+      }, timing.hedgeDelayMs);
+    };
+
+    launch();
+  });
 
   const latencyMs = Date.now() - startTime;
-  return { ...fallback, latencyMs };
+  if (!winner) return { ...fallback, latencyMs };
+
+  const result = normalizeJudgeOutput(winner.text, 'gemini', winner.model, latencyMs, fallback);
+  console.log(
+    `[Judge API - Gemini] Evaluated via ${winner.model} in ${latencyMs}ms -> Verdict: ${result.verdict} (Grounded: ${result.groundednessScore}, Cert: ${result.certaintyScore}, Mismatch: ${result.certaintySupportMismatch})`,
+  );
+  return result;
 }
 
 /**
@@ -639,8 +724,45 @@ export async function executeDualJudge(
   };
 }
 
+// ──────────────────────────────────────────────────────────────────────
+// Judge cache
+// ──────────────────────────────────────────────────────────────────────
+
+const JUDGE_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+const JUDGE_CACHE_MAX_ENTRIES = 500;
+const judgeCache = new Map<string, { storedAt: number; result: JudgeEvaluationResponse }>();
+
+/** Clears cached judgements (tests, or after changing judge models). */
+export function clearJudgeCache(): void {
+  judgeCache.clear();
+}
+
+/**
+ * Judgements are deterministic (temperature 0), so an identical request gets the
+ * same verdict. The key includes the judge prompt, so editing it invalidates entries.
+ */
+function judgeCacheKey(options: JudgeRequestOptions, localModelName: string): string {
+  return crypto
+    .createHash('sha256')
+    .update(
+      JSON.stringify([
+        options.provider || 'gemini',
+        options.model || localModelName,
+        GEMINI_MODELS,
+        SYSTEM_PROMPT,
+        options.useCase || 'support_bot',
+        options.prompt,
+        options.retrievedContext || '',
+        options.responseText,
+        options.claim || '',
+      ]),
+    )
+    .digest('hex');
+}
+
 /**
  * Top-level entrypoint that handles any judge request based on requested provider.
+ * Live answers are cached; heuristic fallbacks are not, so a later call retries the LLM.
  */
 export async function evaluateJudgeRequest(
   options: JudgeRequestOptions,
@@ -649,14 +771,31 @@ export async function evaluateJudgeRequest(
   localModelName: string = DEFAULT_LOCAL_MODEL,
 ): Promise<JudgeEvaluationResponse> {
   const provider = options.provider || 'gemini';
+  const key = judgeCacheKey(options, localModelName);
+  const hit = judgeCache.get(key);
+  if (hit && Date.now() - hit.storedAt < JUDGE_CACHE_TTL_MS) {
+    return { ...hit.result, cached: true };
+  }
 
+  let result: JudgeEvaluationResponse;
   if (provider === 'qwen') {
-    return executeLocalQwenJudge(options, ollamaBaseUrl, options.model || localModelName);
+    result = await executeLocalQwenJudge(options, ollamaBaseUrl, options.model || localModelName);
+  } else if (provider === 'dual') {
+    result = await executeDualJudge(
+      options,
+      aiClient,
+      ollamaBaseUrl,
+      options.model || localModelName,
+    );
+  } else {
+    result = await executeGeminiJudge(options, aiClient);
   }
 
-  if (provider === 'dual') {
-    return executeDualJudge(options, aiClient, ollamaBaseUrl, options.model || localModelName);
+  if (result.isLiveLLM) {
+    if (judgeCache.size >= JUDGE_CACHE_MAX_ENTRIES) {
+      judgeCache.delete(judgeCache.keys().next().value!);
+    }
+    judgeCache.set(key, { storedAt: Date.now(), result });
   }
-
-  return executeGeminiJudge(options, aiClient);
+  return result;
 }

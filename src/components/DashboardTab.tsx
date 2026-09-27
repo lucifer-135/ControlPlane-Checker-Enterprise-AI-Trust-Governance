@@ -27,6 +27,8 @@ import {
   AlertTriangle,
   ArrowUpRight,
 } from 'lucide-react';
+import { averageOverheadMs } from '../lib/metrics';
+import { describeTriggeringFindings } from '../lib/findings';
 
 interface DashboardTabProps {
   interactions: SyntheticInteraction[];
@@ -68,15 +70,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
       ? ((blockedInteractions.length / totalInteractions) * 100).toFixed(1)
       : '0.0';
 
-  const avgOverheadMs =
-    totalInteractions > 0
-      ? Math.round(
-          interactions.reduce(
-            (acc, i) => acc + (evaluations[i.id]?.added_overhead_latency_ms || 82),
-            0,
-          ) / totalInteractions,
-        )
-      : 82;
+  const avgOverheadMs = averageOverheadMs(interactions, evaluations);
 
   // Recent high-priority incidents for the preview table
   const recentHighRiskIncidents = interactions
@@ -476,11 +470,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                     </td>
                     <td className="py-3.5 px-4">
                       <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-[10px] bg-[#FFFAEB]/85 text-[#B54708] border border-[#FEDF89] font-medium shadow-xs">
-                        {evalRes.has_multi_lane_overlap
-                          ? `Performance (Ungrounded) + Responsibility (${evalRes.overlapping_lanes.join(', ')})`
-                          : evalRes.responsibility.pii_detected.length > 0
-                            ? `Responsibility (PII: ${evalRes.responsibility.pii_detected[0].type})`
-                            : 'Performance (Ungrounded Assertion)'}
+                        {describeTriggeringFindings(evalRes)}
                       </span>
                     </td>
                     <td className="py-3.5 px-4">

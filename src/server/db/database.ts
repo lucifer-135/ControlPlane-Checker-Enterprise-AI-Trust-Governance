@@ -20,8 +20,12 @@ import * as fs from 'fs';
 import * as path from 'path';
 import crypto from 'crypto';
 import {
+  CURRENT_CHAIN_VERSION,
+  computeEvidenceHash,
+  computeHeadHMAC,
   computeRecordHMAC,
   hashPayload,
+  type AuditChainHead,
   type StoredAuditRecord,
   type AuditRecordPayload,
 } from './auditChain.js';
@@ -100,6 +104,7 @@ export function initDatabase(dbPath: string = resolveDbPath()): Database.Databas
   db.exec(POST_MIGRATION_SQL);
   console.log(`[Database] SQLite database initialized at: ${dbPath}`);
 
+  initAuditChainHead();
   seedApiKeys();
 
   return db;
@@ -198,6 +203,37 @@ function tenantWhere(
 // Audit Log Operations
 // ──────────────────────────────────────────────────────────────────────
 
+export function getAuditChainHead(): AuditChainHead | null {
+  const row = getDb()
+    .prepare('SELECT record_count, last_hmac, head_hmac FROM audit_chain_head WHERE id = 1')
+    .get() as AuditChainHead | undefined;
+  return row ?? null;
+}
+
+function writeAuditChainHead(recordCount: number, lastHmac: string | null): void {
+  getDb()
+    .prepare(
+      `INSERT INTO audit_chain_head (id, record_count, last_hmac, head_hmac, updated_at)
+       VALUES (1, ?, ?, ?, datetime('now'))
+       ON CONFLICT(id) DO UPDATE SET record_count = excluded.record_count,
+         last_hmac = excluded.last_hmac, head_hmac = excluded.head_hmac,
+         updated_at = excluded.updated_at`,
+    )
+    .run(recordCount, lastHmac, computeHeadHMAC(recordCount, lastHmac));
+}
+
+/**
+ * Databases created before the chain head existed get one pinned to their current
+ * end (trust on first use); from then on, removed records are detected.
+ */
+function initAuditChainHead(): void {
+  if (getAuditChainHead()) return;
+  const { count } = getDb().prepare('SELECT COUNT(*) AS count FROM audit_log').get() as {
+    count: number;
+  };
+  writeAuditChainHead(count, getLatestAuditHmac());
+}
+
 export function getLatestAuditHmac(): string | null {
   const row = getDb()
     .prepare('SELECT log_hmac FROM audit_log ORDER BY rowid DESC LIMIT 1')
@@ -219,66 +255,78 @@ export function insertAuditLog(
   const requestPrompt = options.requestPrompt ?? interaction.prompt;
   const responseText = options.responseText ?? interaction.response;
   const tenant = options.tenant ?? null;
+  const performanceJson = JSON.stringify(evaluation.performance);
+  const costJson = JSON.stringify(evaluation.cost);
+  const responsibilityJson = JSON.stringify(evaluation.responsibility);
 
-  const prevHmac = getLatestAuditHmac();
-  const id = `audit-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
-  const timestamp = new Date().toISOString();
-  const requestHash = hashPayload(requestPrompt);
-  const responseHash = hashPayload(responseText);
+  // Reading the chain end, appending, and moving the head happen atomically
+  const append = getDb().transaction((): StoredAuditRecord => {
+    const prevHmac = getLatestAuditHmac();
+    const id = `audit-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+    const timestamp = new Date().toISOString();
 
-  const payload: AuditRecordPayload = {
-    id,
-    interaction_id: interaction.id,
-    timestamp,
-    request_hash: requestHash,
-    response_hash: responseHash,
-    verdict: evaluation.verdict,
-    composite_risk_score: evaluation.composite_risk_score,
-    session_risk: evaluation.session_accumulated_risk,
-    policy_version: evaluation.policy_profile_version,
-    prev_log_hash: prevHmac,
-    org_id: tenant?.orgId ?? null,
-    workspace_id: tenant?.workspaceId ?? null,
-  };
+    const payload: AuditRecordPayload = {
+      id,
+      interaction_id: interaction.id,
+      timestamp,
+      request_hash: hashPayload(requestPrompt),
+      response_hash: hashPayload(responseText),
+      verdict: evaluation.verdict,
+      composite_risk_score: evaluation.composite_risk_score,
+      session_risk: evaluation.session_accumulated_risk,
+      policy_version: evaluation.policy_profile_version,
+      prev_log_hash: prevHmac,
+      org_id: tenant?.orgId ?? null,
+      workspace_id: tenant?.workspaceId ?? null,
+      evidence_hash: computeEvidenceHash(performanceJson, costJson, responsibilityJson),
+      chain_version: CURRENT_CHAIN_VERSION,
+    };
+    const logHmac = computeRecordHMAC(payload);
 
-  const logHmac = computeRecordHMAC(payload);
+    getDb()
+      .prepare(
+        `INSERT INTO audit_log (
+          id, interaction_id, timestamp, request_hash, response_hash,
+          verdict, composite_risk_score, session_risk, performance_json,
+          cost_json, responsibility_json, policy_version, prev_log_hash, log_hmac,
+          org_id, workspace_id, evidence_hash, chain_version
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        id,
+        interaction.id,
+        timestamp,
+        payload.request_hash,
+        payload.response_hash,
+        evaluation.verdict,
+        evaluation.composite_risk_score,
+        evaluation.session_accumulated_risk,
+        performanceJson,
+        costJson,
+        responsibilityJson,
+        evaluation.policy_profile_version,
+        prevHmac,
+        logHmac,
+        payload.org_id,
+        payload.workspace_id,
+        payload.evidence_hash,
+        payload.chain_version,
+      );
 
-  const insert = getDb().prepare(`
-    INSERT INTO audit_log (
-      id, interaction_id, timestamp, request_hash, response_hash,
-      verdict, composite_risk_score, session_risk, performance_json,
-      cost_json, responsibility_json, policy_version, prev_log_hash, log_hmac,
-      org_id, workspace_id
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `);
+    const head = getAuditChainHead();
+    writeAuditChainHead((head?.record_count ?? 0) + 1, logHmac);
 
-  insert.run(
-    id,
-    interaction.id,
-    timestamp,
-    requestHash,
-    responseHash,
-    evaluation.verdict,
-    evaluation.composite_risk_score,
-    evaluation.session_accumulated_risk,
-    JSON.stringify(evaluation.performance),
-    JSON.stringify(evaluation.cost),
-    JSON.stringify(evaluation.responsibility),
-    evaluation.policy_profile_version,
-    prevHmac,
-    logHmac,
-    payload.org_id,
-    payload.workspace_id,
-  );
+    return {
+      ...payload,
+      performance_json: performanceJson,
+      cost_json: costJson,
+      responsibility_json: responsibilityJson,
+      log_hmac: logHmac,
+      created_at: timestamp,
+    };
+  });
 
-  return {
-    ...payload,
-    performance_json: JSON.stringify(evaluation.performance),
-    cost_json: JSON.stringify(evaluation.cost),
-    responsibility_json: JSON.stringify(evaluation.responsibility),
-    log_hmac: logHmac,
-    created_at: timestamp,
-  };
+  return append();
 }
 
 export function getAuditLogs(

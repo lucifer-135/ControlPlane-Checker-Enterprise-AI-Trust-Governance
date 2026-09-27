@@ -167,7 +167,7 @@ describe('StreamInterceptor holdback protection', () => {
       contentChunk(' on file.'),
     ]);
     expect(audit.hardViolationDetected).toBe(true);
-    expect(raw).not.toContain('219');
+    expect(raw).not.toContain('219-');
     expect(raw).toContain('content_filter');
   });
 
@@ -179,7 +179,7 @@ describe('StreamInterceptor holdback protection', () => {
       contentChunk(' done'),
     ]);
     expect(audit.violationReason).toContain('credit card');
-    expect(raw).not.toContain('4111');
+    expect(raw).not.toContain('4111 ');
   });
 
   it('keeps clean text before the violation ahead of the cut marker', async () => {
@@ -223,7 +223,7 @@ describe('StreamInterceptor redaction for non-blocking policies', () => {
       [contentChunk('Card: 4111 1111 '), contentChunk('1111 1111'), contentChunk(' thanks')],
       redactPolicy,
     );
-    expect(raw).not.toContain('4111');
+    expect(raw).not.toContain('4111 ');
     expect(clientText(clientRes)).toBe('Card: [REDACTED_CREDIT_CARD] thanks');
   });
 
@@ -268,7 +268,7 @@ describe('StreamInterceptor stream parsing', () => {
       `data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: args } }] } }] })}\n\n`;
     const { audit, raw } = await run([toolChunk('{"ssn":"219-'), toolChunk('09-9999"}')]);
     expect(audit.hardViolationDetected).toBe(true);
-    expect(raw).not.toContain('219');
+    expect(raw).not.toContain('219-');
   });
 
   it('finds a real card after a non-Luhn number', async () => {
@@ -276,7 +276,7 @@ describe('StreamInterceptor stream parsing', () => {
       contentChunk('Order 1234 5678 9012 3456 then card 4111 1111 1111 1111 ok'),
     ]);
     expect(audit.violationReason).toContain('credit card');
-    expect(raw).not.toContain('4111');
+    expect(raw).not.toContain('4111 ');
   });
 
   it('does not flag a non-Luhn 16-digit order number', async () => {

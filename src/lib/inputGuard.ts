@@ -78,6 +78,21 @@ export const INJECTION_PATTERNS: {
     severity: 0.9,
   },
   {
+    // "SYSTEM OVERRIDE [Role: Finance VP]: …" — a command form, so a delimiter must follow;
+    // "is there an emergency override for locked accounts?" is a question, not an attack
+    pattern:
+      /\b(?:system|admin(?:istrator)?|executive|emergency|developer|root|security)\s+override\b\s*[:[\-–—!]/i,
+    category: 'authority_override',
+    name: 'Authority Override Command',
+    severity: 0.9,
+  },
+  {
+    pattern: /\[\s*(?:role|persona|authority|clearance)\s*:\s*[^\]]{2,40}\]/i,
+    category: 'role_hijack',
+    name: 'Claimed Role / Authority Tag',
+    severity: 0.8,
+  },
+  {
     pattern: /(?:base64|rot13|hex)\s*(?:decode|encoded?)\s*:/i,
     category: 'encoding_attack',
     name: 'Obfuscated Encoding Attack',

@@ -171,7 +171,9 @@ export const GeminiJudgeResultCard: React.FC<GeminiJudgeResultCardProps> = ({
             {judgeData.latencyMs && (
               <span className="inline-flex items-center space-x-1 text-[11px] font-mono text-[#667085] bg-white/80 px-2 py-1 rounded-lg border border-slate-200">
                 <Clock className="h-3 w-3 text-[#98A2B3]" />
-                <span>{judgeData.latencyMs}ms</span>
+                <span>
+                  {judgeData.latencyMs}ms{judgeData.cached ? ' · cached' : ''}
+                </span>
               </span>
             )}
             <span
@@ -489,7 +491,11 @@ export const GeminiJudgeResultCard: React.FC<GeminiJudgeResultCardProps> = ({
             {judgeData.latencyMs && (
               <span className="text-[10px] font-mono text-[#667085] flex items-center gap-1 mt-0.5">
                 <Clock className="h-2.5 w-2.5" />
-                <span>Execution latency: {judgeData.latencyMs}ms</span>
+                <span>
+                  {judgeData.cached
+                    ? `Cached result (judged in ${judgeData.latencyMs}ms)`
+                    : `Execution latency: ${judgeData.latencyMs}ms`}
+                </span>
               </span>
             )}
           </div>

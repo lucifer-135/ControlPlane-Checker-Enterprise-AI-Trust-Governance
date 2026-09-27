@@ -13,7 +13,8 @@ services:
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-      - AUDIT_HMAC_SECRET=${AUDIT_HMAC_SECRET:-controlplane-enterprise-audit-secret-2026}
+      # Signs the audit chain; no default, since a published key lets anyone forge records
+      - AUDIT_HMAC_SECRET=${AUDIT_HMAC_SECRET:?Set AUDIT_HMAC_SECRET in .env (e.g. openssl rand -hex 32)}
       # Production requires API keys; this registers the first admin key at startup
       - CONTROLPLANE_BOOTSTRAP_ADMIN_KEY=${CONTROLPLANE_BOOTSTRAP_ADMIN_KEY:-}
     volumes:

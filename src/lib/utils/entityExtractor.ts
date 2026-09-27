@@ -13,7 +13,14 @@
 
 export interface ExtractedEntity {
   /** The type of entity. */
-  type: 'PROPER_NAME' | 'REGULATION' | 'CITATION' | 'ADDRESS' | 'ORGANIZATION' | 'DATE_SPECIFIC';
+  type:
+    | 'PROPER_NAME'
+    | 'REGULATION'
+    | 'CITATION'
+    | 'ADDRESS'
+    | 'ORGANIZATION'
+    | 'DATE_SPECIFIC'
+    | 'EMAIL';
   /** The matched text. */
   text: string;
   /** Start offset in the source string. */
@@ -308,10 +315,28 @@ function extractAddresses(text: string): ExtractedEntity[] {
 }
 
 /**
+ * Extracts email addresses. An address the sources never mention is an
+ * unsupported claim, just like an unknown name.
+ */
+function extractEmails(text: string): ExtractedEntity[] {
+  return [...text.matchAll(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g)].map((m) => ({
+    type: 'EMAIL' as const,
+    text: m[0],
+    start: m.index!,
+    end: m.index! + m[0].length,
+  }));
+}
+
+/**
  * Extracts all entity types from a given text.
  */
 export function extractEntities(text: string): ExtractedEntity[] {
-  return [...extractProperNames(text), ...extractRegulations(text), ...extractAddresses(text)];
+  return [
+    ...extractProperNames(text),
+    ...extractRegulations(text),
+    ...extractAddresses(text),
+    ...extractEmails(text),
+  ];
 }
 
 /**

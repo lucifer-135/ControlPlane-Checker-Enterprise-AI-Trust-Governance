@@ -113,10 +113,23 @@ function findUngroundedNumbers(
   response: string,
   contextText: string,
 ): { text: string; reason: string }[] {
-  const responseNumbers = response.match(/\$?\b\d+(?:,\d+)*(?:\.\d+)?%?\b/g) || [];
+  // Hyphenated identifiers (SSNs, phone numbers, reference codes) are one token,
+  // so "219-45-8821" is checked as a whole rather than as "219", "45" and "8821"
+  const responseNumbers =
+    response.match(/\b\d{2,}(?:-\d{2,}){2,}\b|\$?\b\d+(?:,\d+)*(?:\.\d+)?%?\b/g) || [];
   const ungrounded: { text: string; reason: string }[] = [];
 
   for (const num of responseNumbers) {
+    if (/^\d+(?:-\d+){2,}$/.test(num)) {
+      if (!contextText.includes(num)) {
+        ungrounded.push({
+          text: num,
+          reason: `Identifier "${num}" not present in retrieved governance context`,
+        });
+      }
+      continue;
+    }
+
     const cleanNum = num.replace(/[$,]/g, '');
     const numValue = parseFloat(cleanNum);
 
@@ -130,6 +143,16 @@ function findUngroundedNumbers(
     const asWholeNumber = (n: string) =>
       new RegExp(`(?<![\\d.,])${n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\d]|[.,]\\d)`);
     if (asWholeNumber(num).test(contextText) || asWholeNumber(cleanNum).test(contextText)) {
+      continue;
+    }
+
+    // Money is quoted exactly, so a currency amount gets no rounding tolerance:
+    // "$24.00" is not grounded by "$25.00"
+    if (num.startsWith('$')) {
+      ungrounded.push({
+        text: num,
+        reason: `Monetary amount "${num}" does not match any amount in retrieved governance context`,
+      });
       continue;
     }
 
@@ -242,8 +265,8 @@ export function evaluatePerformanceLane(
       groundednessScore = Math.min(groundednessScore, 0.25);
     }
 
-    // Hard penalty: many ungrounded entities or numbers
-    if (entityVerification.ungrounded.length >= 3 || ungroundedNumbers.length >= 3) {
+    // Hard penalty: three or more unsupported facts (names, emails, addresses, numbers)
+    if (entityVerification.ungrounded.length + ungroundedNumbers.length >= 3) {
       groundednessScore = Math.min(groundednessScore, 0.2);
     } else if (entityVerification.ungrounded.length >= 1) {
       groundednessScore = Math.min(groundednessScore, groundednessScore * 0.7);

@@ -214,6 +214,51 @@ const PHRASE_CONTRADICTIONS: {
   },
 ];
 
+const MONEY_STOPWORDS = new Set([
+  'the',
+  'and',
+  'for',
+  'with',
+  'that',
+  'this',
+  'from',
+  'per',
+  'are',
+  'was',
+  'will',
+  'would',
+  'can',
+  'you',
+  'your',
+  'our',
+  'its',
+  'has',
+  'have',
+  'been',
+  'into',
+  'each',
+  'any',
+  'all',
+]);
+
+/**
+ * Currency amounts with the words that describe them (the four words before the amount),
+ * e.g. "$25.00" → ["flat", "late", "fee"].
+ */
+function findMoneyAmounts(text: string): { text: string; value: number; keywords: string[] }[] {
+  const amounts: { text: string; value: number; keywords: string[] }[] = [];
+  for (const m of text.matchAll(/[$£€]\s?\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?(?![\d,])/g)) {
+    const value = parseFloat(m[0].replace(/[$£€,\s]/g, ''));
+    if (isNaN(value)) continue;
+    const before = text.slice(Math.max(0, m.index! - 60), m.index!).toLowerCase();
+    const keywords = (before.match(/[a-z][a-z-]+/g) || [])
+      .slice(-4)
+      .filter((w) => w.length > 2 && !MONEY_STOPWORDS.has(w));
+    amounts.push({ text: m[0], value, keywords });
+  }
+  return amounts;
+}
+
 export function detectContradictions(
   responseText: string,
   contextText: string,
@@ -321,31 +366,34 @@ export function detectContradictions(
   const contextNumberPattern = /(\w+[\s]*)?(\$?\b\d+(?:,\d+)*(?:\.\d+)?%?\b)([\s]*\w+)?/g;
   const responseNumberPattern = /(\w+[\s]*)?(\$?\b\d+(?:,\d+)*(?:\.\d+)?%?\b)([\s]*\w+)?/g;
 
-  const contextNumbers: Array<{ value: number; context: string }> = [];
-  const responseNumbers: Array<{ value: number; context: string }> = [];
+  const contextNumbers: Array<{ value: number; raw: string; context: string }> = [];
+  const responseNumbers: Array<{ value: number; raw: string; context: string }> = [];
+
+  // Identifiers (account and routing numbers, parts of SSNs or phone numbers) are
+  // not quantities, so they are never compared by magnitude
+  const isIdentifier = (text: string, start: number, raw: string) =>
+    /^\d{7,}$/.test(raw) ||
+    /\d-$/.test(text.slice(Math.max(0, start - 2), start)) ||
+    /^-\d/.test(text.slice(start + raw.length, start + raw.length + 2));
 
   let match: RegExpExecArray | null;
   while ((match = contextNumberPattern.exec(contextText)) !== null) {
-    const numStr = match[2].replace(/[$,]/g, '').replace(/%$/, '');
-    const num = parseFloat(numStr);
+    const raw = match[2];
+    if (isIdentifier(contextText, match.index + (match[1] || '').length, raw)) continue;
+    const num = parseFloat(raw.replace(/[$,]/g, '').replace(/%$/, ''));
     if (!isNaN(num) && num > 0) {
       const surrounding = (match[1] || '').trim() + ' ' + (match[3] || '').trim();
-      contextNumbers.push({
-        value: num,
-        context: surrounding.trim().toLowerCase(),
-      });
+      contextNumbers.push({ value: num, raw, context: surrounding.trim().toLowerCase() });
     }
   }
 
   while ((match = responseNumberPattern.exec(responseText)) !== null) {
-    const numStr = match[2].replace(/[$,]/g, '').replace(/%$/, '');
-    const num = parseFloat(numStr);
+    const raw = match[2];
+    if (isIdentifier(responseText, match.index + (match[1] || '').length, raw)) continue;
+    const num = parseFloat(raw.replace(/[$,]/g, '').replace(/%$/, ''));
     if (!isNaN(num) && num > 0) {
       const surrounding = (match[1] || '').trim() + ' ' + (match[3] || '').trim();
-      responseNumbers.push({
-        value: num,
-        context: surrounding.trim().toLowerCase(),
-      });
+      responseNumbers.push({ value: num, raw, context: surrounding.trim().toLowerCase() });
     }
   }
 
@@ -366,8 +414,11 @@ export function detectContradictions(
       .filter((c) => c.shared > 0);
     if (similar.some((c) => sameValue(c.cn.value, rn.value))) continue;
 
-    let best: { cn: { value: number; context: string }; shared: number; ratio: number } | null =
-      null;
+    let best: {
+      cn: { value: number; raw: string; context: string };
+      shared: number;
+      ratio: number;
+    } | null = null;
     for (const { cn, shared } of similar) {
       // Same semantic context — check if numbers differ significantly
       const ratio = Math.max(rn.value, cn.value) / Math.min(rn.value, cn.value);
@@ -377,9 +428,25 @@ export function detectContradictions(
     }
     if (best) {
       contradictions.push({
-        contextTerm: `${best.cn.value} (context: "${best.cn.context}")`,
-        responseTerm: `${rn.value} (response: "${rn.context}")`,
-        reason: `Numeric contradiction in similar context: context states ${best.cn.value} but response claims ${rn.value} (${best.ratio.toFixed(1)}x difference).`,
+        contextTerm: best.cn.raw,
+        responseTerm: rn.raw,
+        reason: `Numeric contradiction in similar context: context states ${best.cn.raw} ("${best.cn.context}") but response claims ${rn.raw} ("${rn.context}"), a ${best.ratio.toFixed(1)}x difference.`,
+      });
+    }
+  }
+
+  // --- 4. Monetary amount contradictions ---
+  // A fee or price quoted for the same thing as the context but with a different
+  // value is wrong however small the gap ("late fee of $24.00" vs "$25.00").
+  const contextAmounts = findMoneyAmounts(contextText);
+  for (const ra of findMoneyAmounts(responseText)) {
+    if (contextAmounts.some((ca) => ca.value === ra.value)) continue;
+    const conflict = contextAmounts.find((ca) => ca.keywords.some((k) => ra.keywords.includes(k)));
+    if (conflict) {
+      contradictions.push({
+        contextTerm: conflict.text,
+        responseTerm: ra.text,
+        reason: `Monetary contradiction: context states ${conflict.text} for "${conflict.keywords.join(' ')}" but response states ${ra.text}.`,
       });
     }
   }

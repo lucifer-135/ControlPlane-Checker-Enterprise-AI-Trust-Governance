@@ -35,6 +35,8 @@ CREATE TABLE IF NOT EXISTS audit_log (
   log_hmac TEXT NOT NULL,
   org_id TEXT,
   workspace_id TEXT,
+  evidence_hash TEXT,
+  chain_version INTEGER,
   created_at TEXT DEFAULT (datetime('now'))
 );
 
@@ -102,6 +104,8 @@ CREATE TABLE IF NOT EXISTS baseline_state (
 export const COLUMN_MIGRATIONS: { table: string; column: string; definition: string }[] = [
   { table: 'audit_log', column: 'org_id', definition: 'TEXT' },
   { table: 'audit_log', column: 'workspace_id', definition: 'TEXT' },
+  { table: 'audit_log', column: 'evidence_hash', definition: 'TEXT' },
+  { table: 'audit_log', column: 'chain_version', definition: 'INTEGER' },
   { table: 'review_decisions', column: 'org_id', definition: 'TEXT' },
   { table: 'review_decisions', column: 'workspace_id', definition: 'TEXT' },
   { table: 'api_keys', column: 'role', definition: "TEXT NOT NULL DEFAULT 'service'" },
@@ -135,5 +139,21 @@ CREATE TRIGGER IF NOT EXISTS trg_audit_log_no_delete
 BEFORE DELETE ON audit_log
 BEGIN
   SELECT RAISE(ABORT, 'audit_log is append-only');
+END;
+
+-- Signed end-of-chain pointer (record count + latest HMAC), updated with every insert.
+-- It detects records removed from the end of the chain; it can change but never vanish.
+CREATE TABLE IF NOT EXISTS audit_chain_head (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  record_count INTEGER NOT NULL,
+  last_hmac TEXT,
+  head_hmac TEXT NOT NULL,
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TRIGGER IF NOT EXISTS trg_audit_chain_head_no_delete
+BEFORE DELETE ON audit_chain_head
+BEGIN
+  SELECT RAISE(ABORT, 'audit_chain_head cannot be deleted');
 END;
 `;

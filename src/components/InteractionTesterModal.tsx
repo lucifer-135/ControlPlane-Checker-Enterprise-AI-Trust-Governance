@@ -13,6 +13,7 @@ import {
   JudgeProvider,
 } from '../types';
 import { evaluateInteraction } from '../lib/decisionEngine';
+import { displayClaimSpans } from '../lib/findings';
 import { DEFAULT_POLICY_PROFILES } from '../lib/policyProfiles';
 import { BASELINE_METRICS } from '../data/baselines';
 import {
@@ -1158,9 +1159,10 @@ export const InteractionTesterModal: React.FC<InteractionTesterModalProps> = ({
                 {(evaluationResult.performance.triggering_spans.length > 0 ||
                   evaluationResult.responsibility.triggering_spans.length > 0) && (
                   <div className="pt-2 border-t border-slate-200 flex flex-wrap gap-1.5">
-                    {evaluationResult.performance.triggering_spans.map((s, idx) => (
+                    {displayClaimSpans(evaluationResult).map((s, idx) => (
                       <span
                         key={`perf-${idx}`}
+                        title={s.reason}
                         className="px-2 py-0.5 rounded-lg bg-[#FEF3F2] text-[#B42318] border border-[#FECDCA] text-[10px] font-medium shadow-xs"
                       >
                         Claim Mismatch: "{s.text}"

@@ -24,7 +24,10 @@
 import crypto from 'crypto';
 import type { Request, Response } from 'express';
 import { evaluateInteraction } from '../lib/decisionEngine.js';
+import { evaluateResponsibilityLane } from '../lib/lanes/responsibilityLane.js';
+import { needsAccuracyDisclaimer } from '../lib/deliveryTreatment.js';
 import type {
+  ConversationTurn,
   EvaluationResult,
   PolicyProfile,
   SyntheticInteraction,
@@ -255,6 +258,291 @@ function safeFallbackCompletion(reason: string, modelsAttempted: string[]) {
 }
 
 // ──────────────────────────────────────────────────────────────────────
+// Response & error shaping (OpenAI wire compatibility)
+// ──────────────────────────────────────────────────────────────────────
+
+const ACCURACY_DISCLAIMER =
+  '\n\n---\n⚠️ *This response has been flagged for potential accuracy concerns. Please verify the information independently before acting on it.*';
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0;
+}
+
+/** Arguments of every tool call (and the legacy function_call) in a choice's message. */
+function toolArgumentsOf(choice: any): string[] {
+  const message = choice?.message;
+  const toolArgs = Array.isArray(message?.tool_calls)
+    ? message.tool_calls.map((tc: any) => tc?.function?.arguments)
+    : [];
+  return [...toolArgs, message?.function_call?.arguments].filter(isNonEmptyString);
+}
+
+/** Redacts PII in one text field; returns it unchanged when nothing is found. */
+function redactPiiText(text: string, policy: PolicyProfile): string {
+  const scan = evaluateResponsibilityLane(
+    text,
+    policy.geography_ruleset,
+    policy.thresholds.pii_severity_cutoff,
+    policy.thresholds.toxicity_cutoff,
+  );
+  return scan.pii_detected.length > 0 ? scan.redacted_response : text;
+}
+
+/**
+ * Applies governance to one upstream choice without dropping any of its fields:
+ * PII is redacted in content and tool/function-call arguments, and the accuracy
+ * disclaimer is appended to non-empty content.
+ */
+function governChoice(choice: any, policy: PolicyProfile, addDisclaimer: boolean): any {
+  const message = choice?.message;
+  if (!message || typeof message !== 'object') return choice;
+
+  const governed: any = { ...message };
+  if (typeof governed.content === 'string') {
+    governed.content = redactPiiText(governed.content, policy);
+    if (addDisclaimer && governed.content) governed.content += ACCURACY_DISCLAIMER;
+  }
+  if (Array.isArray(governed.tool_calls)) {
+    governed.tool_calls = governed.tool_calls.map((tc: any) =>
+      typeof tc?.function?.arguments === 'string'
+        ? {
+            ...tc,
+            function: { ...tc.function, arguments: redactPiiText(tc.function.arguments, policy) },
+          }
+        : tc,
+    );
+  }
+  if (typeof governed.function_call?.arguments === 'string') {
+    governed.function_call = {
+      ...governed.function_call,
+      arguments: redactPiiText(governed.function_call.arguments, policy),
+    };
+  }
+  return { ...choice, message: governed };
+}
+
+/**
+ * Returns an upstream error body in OpenAI shape ({ error: { message, type, param, code } })
+ * so SDK clients can branch on it, or null when the body is not a structured error.
+ * Gemini's OpenAI endpoint wraps errors in a one-element array; Anthropic's carries the
+ * same `error` object.
+ */
+export function upstreamErrorBody(rawBody: string): { error: Record<string, unknown> } | null {
+  try {
+    let parsed = JSON.parse(rawBody);
+    if (Array.isArray(parsed)) parsed = parsed[0];
+    const error = parsed?.error;
+    if (error && typeof error === 'object' && typeof error.message === 'string') {
+      return { error };
+    }
+  } catch {
+    // Not JSON
+  }
+  return null;
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Grounding context from the request
+// ──────────────────────────────────────────────────────────────────────
+
+/**
+ * System/developer messages shorter than this are treated as instructions only
+ * ("You are a helpful assistant"): they hold nothing to check an answer against,
+ * and grounding general answers against them would flag every one as unsupported.
+ */
+export const MIN_SYSTEM_CONTEXT_CHARS = 200;
+
+/** Header carrying retrieved documents explicitly, base64-encoded UTF-8. */
+export const CONTEXT_HEADER = 'x-controlplane-context';
+
+/** Plain text of a chat message's content (string or content-part array). */
+export function messageText(content: unknown): string {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((p: any) => (typeof p === 'string' ? p : typeof p?.text === 'string' ? p.text : ''))
+      .filter(Boolean)
+      .join(' ');
+  }
+  return '';
+}
+
+export interface RequestGrounding {
+  lastUserMessage: string;
+  systemPrompt?: string;
+  /** Evidence the answer is checked against; null when the request carries none. */
+  retrievedContext: string | null;
+  /** Earlier user/assistant turns (the last user message excluded). */
+  history: ConversationTurn[];
+}
+
+/**
+ * Splits an OpenAI-style request into what governance needs. Only content the
+ * calling application supplies counts as evidence: system/developer messages and
+ * the context header. User messages never do, so a user cannot "ground" a false
+ * claim by asserting it.
+ */
+export function extractRequestGrounding(
+  messages: any[],
+  contextHeader?: string | string[],
+): RequestGrounding {
+  const list = Array.isArray(messages) ? messages : [];
+  const systemPrompt =
+    list
+      .filter((m) => m?.role === 'system' || m?.role === 'developer')
+      .map((m) => messageText(m.content))
+      .filter(Boolean)
+      .join('\n\n') || undefined;
+
+  let lastUserIndex = -1;
+  list.forEach((m, i) => {
+    if (m?.role === 'user') lastUserIndex = i;
+  });
+  const lastUserMessage = lastUserIndex >= 0 ? messageText(list[lastUserIndex].content) : '';
+  const history: ConversationTurn[] = list
+    .slice(0, Math.max(lastUserIndex, 0))
+    .filter((m) => m?.role === 'user' || m?.role === 'assistant')
+    .map((m) => ({ role: m.role, content: messageText(m.content) }))
+    .filter((t) => t.content);
+
+  const rawHeader = Array.isArray(contextHeader) ? contextHeader[0] : contextHeader;
+  let headerContext = '';
+  if (rawHeader) {
+    try {
+      headerContext = Buffer.from(rawHeader, 'base64').toString('utf8').trim();
+    } catch {
+      headerContext = '';
+    }
+  }
+
+  const evidence = [
+    headerContext,
+    systemPrompt && systemPrompt.length >= MIN_SYSTEM_CONTEXT_CHARS ? systemPrompt : '',
+  ].filter(Boolean);
+
+  return {
+    lastUserMessage,
+    systemPrompt,
+    retrievedContext: evidence.length > 0 ? evidence.join('\n\n') : null,
+    history,
+  };
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Model listing (GET /v1/models)
+// ──────────────────────────────────────────────────────────────────────
+
+/** API key for a provider; local Ollama needs none. Empty when the provider is not configured. */
+function providerApiKey(provider: UpstreamProvider): string {
+  return process.env[provider.apiKeyEnvVar] || (provider.id === 'ollama' ? 'ollama-local-key' : '');
+}
+
+export interface GatewayModel {
+  id: string;
+  object: 'model';
+  created: number;
+  owned_by: string;
+}
+
+const MODEL_LIST_TTL_MS = 5 * 60_000;
+const MODEL_LIST_TIMEOUT_MS = 3000;
+let modelListCache: { at: number; data: GatewayModel[] } | null = null;
+
+/** Clears the cached model list (tests, key rotation). */
+export function resetModelListCache(): void {
+  modelListCache = null;
+}
+
+/** Asks one provider for its models; returns null when it cannot be reached. */
+async function fetchProviderModels(provider: UpstreamProvider, apiKey: string) {
+  const headers: Record<string, string> = { Authorization: `Bearer ${apiKey}` };
+  if (provider.id === 'anthropic') {
+    headers['x-api-key'] = apiKey;
+    headers['anthropic-version'] = '2023-06-01';
+  }
+  try {
+    const resp = await fetch(`${provider.baseUrl}/models`, {
+      headers,
+      signal: AbortSignal.timeout(MODEL_LIST_TIMEOUT_MS),
+    });
+    if (!resp.ok) return null;
+    const body: any = await resp.json();
+    return Array.isArray(body?.data) ? (body.data as any[]) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Models the gateway can serve: for every provider with a key configured, the models
+ * it reports plus its configured fallbacks. Only ids the gateway would route back to
+ * the same provider are listed, so every listed model works when requested.
+ */
+export async function listGatewayModels(): Promise<GatewayModel[]> {
+  if (modelListCache && Date.now() - modelListCache.at < MODEL_LIST_TTL_MS) {
+    return modelListCache.data;
+  }
+
+  const configured = Object.values(UPSTREAM_PROVIDERS).filter((p) => providerApiKey(p));
+  const perProvider = await Promise.all(
+    configured.map(async (provider) => {
+      const reported = (await fetchProviderModels(provider, providerApiKey(provider))) ?? [];
+      const entries: GatewayModel[] = [
+        ...reported
+          .filter((m) => typeof m?.id === 'string')
+          .map((m) => ({
+            id: m.id as string,
+            object: 'model' as const,
+            created: typeof m.created === 'number' ? m.created : 0,
+            owned_by: typeof m.owned_by === 'string' ? m.owned_by : provider.id,
+          })),
+        ...provider.fallbackModels().map((id) => ({
+          id,
+          object: 'model' as const,
+          created: 0,
+          owned_by: provider.id,
+        })),
+      ];
+      return entries.filter((m) => resolveUpstreamProvider(m.id).id === provider.id);
+    }),
+  );
+
+  const seen = new Set<string>();
+  const data = perProvider.flat().filter((m) => !seen.has(m.id) && seen.add(m.id));
+  modelListCache = { at: Date.now(), data };
+  return data;
+}
+
+/** GET /v1/models */
+export async function handleListModels(_req: Request, res: Response): Promise<void> {
+  try {
+    res.json({ object: 'list', data: await listGatewayModels() });
+  } catch (error: any) {
+    res.status(500).json({
+      error: { message: error.message || 'Failed to list models', type: 'internal_error' },
+    });
+  }
+}
+
+/** GET /v1/models/:model */
+export async function handleRetrieveModel(req: Request, res: Response): Promise<void> {
+  const id = req.params.model;
+  const model = (await listGatewayModels()).find((m) => m.id === id);
+  if (!model) {
+    res.status(404).json({
+      error: {
+        message: `The model '${id}' does not exist or is not available through this gateway`,
+        type: 'invalid_request_error',
+        param: 'model',
+        code: 'model_not_found',
+      },
+    });
+    return;
+  }
+  res.json(model);
+}
+
+// ──────────────────────────────────────────────────────────────────────
 // Main Gateway Handler
 // ──────────────────────────────────────────────────────────────────────
 
@@ -295,13 +583,8 @@ export async function handleChatCompletions(
 
     // ── 2. Pre-flight input guard (safely handling string or multimodal parts) ──
     // Per-key rate limiting already happened in the auth middleware.
-    const rawUserContent = messages.filter((m: any) => m.role === 'user').pop()?.content || '';
-    const lastUserMessage =
-      typeof rawUserContent === 'string'
-        ? rawUserContent
-        : Array.isArray(rawUserContent)
-          ? rawUserContent.map((p: any) => (typeof p === 'string' ? p : p?.text || '')).join(' ')
-          : '';
+    const grounding = extractRequestGrounding(messages, req.headers[CONTEXT_HEADER]);
+    const { lastUserMessage } = grounding;
 
     const inputGuard: InputGuardResult = scanInput(lastUserMessage);
     if (!inputGuard.pass) {
@@ -323,9 +606,7 @@ export async function handleChatCompletions(
     // ── 3. Resolve upstream provider & provider-specific model candidates ──
     const requestedModel = model;
     const provider = resolveUpstreamProvider(requestedModel);
-    const apiKey =
-      process.env[provider.apiKeyEnvVar] ||
-      (provider.apiKeyEnvVar === 'OLLAMA_API_KEY' ? 'ollama-local-key' : '');
+    const apiKey = providerApiKey(provider);
     if (!apiKey) {
       res.status(500).json({
         error: {
@@ -439,12 +720,14 @@ export async function handleChatCompletions(
           } else {
             upstreamBreaker.recordSuccess();
           }
-          res.status(resp.status).json({
-            error: {
-              message: `Upstream error: ${errorBody}`,
-              type: 'upstream_error',
+          res.status(resp.status).json(
+            upstreamErrorBody(errorBody) ?? {
+              error: {
+                message: `Upstream error: ${errorBody}`,
+                type: 'upstream_error',
+              },
             },
-          });
+          );
           return;
         } catch (err: any) {
           lastError = err.message;
@@ -507,6 +790,9 @@ export async function handleChatCompletions(
           sessionId,
           model: usedModel,
           policyKey,
+          systemPrompt: grounding.systemPrompt,
+          history: grounding.history,
+          retrievedContext: grounding.retrievedContext,
         },
       );
       return;
@@ -526,7 +812,12 @@ export async function handleChatCompletions(
       return;
     }
 
-    const assistantMessage = upstreamData.choices?.[0]?.message?.content || '';
+    // Governance sees every choice's text and every tool/function call argument
+    const upstreamChoices: any[] = Array.isArray(upstreamData.choices) ? upstreamData.choices : [];
+    const assistantMessage = [
+      ...upstreamChoices.map((c) => c?.message?.content).filter(isNonEmptyString),
+      ...upstreamChoices.flatMap(toolArgumentsOf),
+    ].join('\n\n');
 
     // Build a SyntheticInteraction object for the evaluator
     const interaction: SyntheticInteraction = {
@@ -536,7 +827,9 @@ export async function handleChatCompletions(
       turn_number: turnNumber,
       query_type: 'gateway_request',
       prompt: lastUserMessage,
-      retrieved_context: null,
+      system_prompt: grounding.systemPrompt,
+      history: grounding.history,
+      retrieved_context: grounding.retrievedContext,
       response: assistantMessage,
       token_count: {
         prompt: upstreamData.usage?.prompt_tokens || 0,
@@ -601,19 +894,22 @@ export async function handleChatCompletions(
 
     // ── 8. Apply verdict ──
     if (evaluation.verdict === 'BLOCK_ESCALATE' && policy.pre_response_blocking) {
+      const withheld = (index: number) => ({
+        index,
+        message: {
+          role: 'assistant',
+          content:
+            "I'm unable to provide this response as it has been flagged by our governance system. A human reviewer has been notified.",
+        },
+        finish_reason: 'content_filter',
+        logprobs: null,
+      });
       res.status(200).json({
         ...upstreamData,
-        choices: [
-          {
-            index: 0,
-            message: {
-              role: 'assistant',
-              content:
-                "I'm unable to provide this response as it has been flagged by our governance system. A human reviewer has been notified.",
-            },
-            finish_reason: 'content_filter',
-          },
-        ],
+        choices:
+          upstreamChoices.length > 0
+            ? upstreamChoices.map((c, i) => withheld(typeof c?.index === 'number' ? c.index : i))
+            : [withheld(0)],
         governance: {
           verdict: evaluation.verdict,
           composite_risk_score: evaluation.composite_risk_score,
@@ -633,34 +929,13 @@ export async function handleChatCompletions(
       return;
     }
 
-    // Apply PII redaction if needed
-    let finalContent =
-      evaluation.responsibility.pii_detected.length > 0
-        ? evaluation.responsibility.redacted_response
-        : assistantMessage;
+    const addDisclaimer = needsAccuracyDisclaimer(evaluation);
 
-    // SOFT_CORRECT carries an accuracy disclaimer, and so does a BLOCK_ESCALATE that a
-    // non-pre-blocking policy still delivers when the answer itself is ungrounded
-    const deliveredButUngrounded =
-      evaluation.verdict === 'BLOCK_ESCALATE' &&
-      (evaluation.performance.is_confidently_wrong ||
-        evaluation.overlapping_lanes.some((l) => l.startsWith('Performance')));
-    if (evaluation.verdict === 'SOFT_CORRECT' || deliveredButUngrounded) {
-      finalContent +=
-        '\n\n---\n⚠️ *This response has been flagged for potential accuracy concerns. Please verify the information independently before acting on it.*';
-    }
-
+    // Keep the upstream response intact (all choices, tool calls, refusal, annotations,
+    // logprobs); only redact PII in text and tool arguments and append the disclaimer
     res.json({
       ...upstreamData,
-      choices: [
-        {
-          ...upstreamData.choices?.[0],
-          message: {
-            role: 'assistant',
-            content: finalContent,
-          },
-        },
-      ],
+      choices: upstreamChoices.map((choice) => governChoice(choice, policy, addDisclaimer)),
       governance: {
         verdict: evaluation.verdict,
         composite_risk_score: evaluation.composite_risk_score,

@@ -616,7 +616,7 @@ export const PolicyProfilesTab: React.FC<PolicyProfilesTabProps> = ({
               <div className="pt-2.5 border-t border-slate-200 text-[11px] text-[#667085]">
                 Git config sync:{' '}
                 <code className="font-mono text-[#4F46E5] font-medium">
-                  policy/{currentProfile.use_case}.yaml
+                  policies/{currentProfile.use_case.replace(/_/g, '-')}.yaml
                 </code>
               </div>
             </div>

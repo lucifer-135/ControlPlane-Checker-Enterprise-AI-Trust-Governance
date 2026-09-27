@@ -7,6 +7,7 @@ import { createServer as createViteServer } from 'vite';
 import { createApp, type CreatedApp } from './src/server/app.js';
 import { DuplicatePolicyError } from './src/server/policyLoader.js';
 import { initDatabase } from './src/server/db/database.js';
+import { getAuditSecret } from './src/server/db/auditChain.js';
 import { getAuthMode, isProduction } from './src/server/config.js';
 import {
   restoreBaselineState,
@@ -16,6 +17,14 @@ import {
 import { createDevWatchIgnore } from './src/server/devWatch.js';
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+
+// The audit chain is only tamper-evident with a private signing key; production refuses to start without one
+try {
+  getAuditSecret();
+} catch (err) {
+  console.error(`[Server Error] ${(err as Error).message}`);
+  process.exit(1);
+}
 
 // Initialize SQLite database and restore durable rolling baselines
 initDatabase();

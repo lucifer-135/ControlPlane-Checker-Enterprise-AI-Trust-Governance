@@ -24,7 +24,12 @@ import crypto from 'crypto';
 import type { Response } from 'express';
 import { isValidLuhn } from '../lib/utils/luhn.js';
 import { evaluateInteraction } from '../lib/decisionEngine.js';
-import type { PolicyProfile, SessionState, SyntheticInteraction } from '../types.js';
+import type {
+  ConversationTurn,
+  PolicyProfile,
+  SessionState,
+  SyntheticInteraction,
+} from '../types.js';
 import { globalBaselineTracker } from './rollingBaseline.js';
 import { insertAuditLog } from './db/database.js';
 import { recordEvaluationTelemetry } from './telemetry.js';
@@ -188,6 +193,10 @@ export interface StreamContext {
   sessionId: string;
   model: string;
   policyKey: string;
+  /** Grounding from the request (see extractRequestGrounding in gateway.ts). */
+  systemPrompt?: string;
+  history?: ConversationTurn[];
+  retrievedContext?: string | null;
 }
 
 export interface StreamAuditLog {
@@ -548,7 +557,9 @@ export async function interceptStream(
       turn_number: turnNumber,
       query_type: 'streaming_completion',
       prompt: userPrompt,
-      retrieved_context: null,
+      system_prompt: ctx.systemPrompt,
+      history: ctx.history,
+      retrieved_context: ctx.retrievedContext ?? null,
       response: evaluatedText,
       token_count: {
         prompt: promptTokens,

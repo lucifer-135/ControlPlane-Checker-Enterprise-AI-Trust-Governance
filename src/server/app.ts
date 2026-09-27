@@ -38,7 +38,12 @@ import type {
   UseCaseId,
 } from '../types.js';
 import { loadPoliciesFromDir, watchPoliciesDir, writePolicyToFile } from './policyLoader.js';
-import { handleChatCompletions, learnFromTrustedObservation } from './gateway.js';
+import {
+  handleChatCompletions,
+  handleListModels,
+  handleRetrieveModel,
+  learnFromTrustedObservation,
+} from './gateway.js';
 import {
   authenticate,
   requireRole,
@@ -54,6 +59,7 @@ import {
   insertAuditLog,
   getAuditLogs,
   getAllAuditLogsForVerification,
+  getAuditChainHead,
   insertReviewDecision,
   getReviewDecisions,
   getGatewayEscalationEvent,
@@ -62,7 +68,7 @@ import {
   API_KEY_ROLES,
   type ApiKeyRole,
 } from './db/database.js';
-import { verifyAuditChain } from './db/auditChain.js';
+import { isAuditSecretConfigured, verifyAuditChain } from './db/auditChain.js';
 import { recordEvaluationTelemetry, getPrometheusMetricsText } from './telemetry.js';
 import {
   evaluateJudgeRequest,
@@ -298,6 +304,10 @@ export function createApp(options: CreateAppOptions = {}): CreatedApp {
   app.post('/chat/completions', auth, (req, res) => {
     handleChatCompletions(req as AuthenticatedRequest, res, serverPolicyProfiles);
   });
+
+  // GET /v1/models - Models reachable through the gateway (SDK model pickers, client probes)
+  app.get(['/v1/models', '/models'], auth, handleListModels);
+  app.get(['/v1/models/:model', '/models/:model'], auth, handleRetrieveModel);
 
   // Rate-limit bucket for the caller (matches the bucket used by the auth middleware)
   const rateLimitBucket = (req: AuthenticatedRequest) => req.principal?.keyHash || 'local-dev';
@@ -536,10 +546,12 @@ export function createApp(options: CreateAppOptions = {}): CreatedApp {
   app.get('/api/audit-logs/verify', admin, (_req, res) => {
     try {
       const allLogs = getAllAuditLogsForVerification();
-      const verification = verifyAuditChain(allLogs);
+      const verification = verifyAuditChain(allLogs, undefined, getAuditChainHead());
       res.json({
         status: verification.valid ? 'INTEGRITY_VERIFIED' : 'TAMPER_DETECTED',
         ...verification,
+        // Without a configured secret the chain is signed with a public key and can be forged
+        signingSecretConfigured: isAuditSecretConfigured(),
         timestamp: new Date().toISOString(),
       });
     } catch (error: any) {

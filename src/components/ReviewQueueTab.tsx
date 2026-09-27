@@ -28,6 +28,7 @@ import {
   ChevronUp,
 } from 'lucide-react';
 import { InteractionContextPanel } from './InteractionContextPanel';
+import { displayClaimSpans } from '../lib/findings';
 
 interface ReviewQueueTabProps {
   interactions: SyntheticInteraction[];
@@ -635,9 +636,10 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
                                   Triggering violations detected in response:
                                 </span>
                                 <div className="flex flex-wrap gap-1.5">
-                                  {evalRes.performance.triggering_spans.map((s, idx) => (
+                                  {displayClaimSpans(evalRes).map((s, idx) => (
                                     <span
                                       key={`perf-${idx}`}
+                                      title={s.reason}
                                       className="px-2.5 py-0.5 rounded-lg bg-[#FEF3F2] text-[#B42318] border border-[#FECDCA] text-[10px] font-medium shadow-xs"
                                     >
                                       Claim Mismatch: "{s.text}"

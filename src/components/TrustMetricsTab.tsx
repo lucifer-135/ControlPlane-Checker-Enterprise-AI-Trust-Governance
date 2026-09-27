@@ -7,6 +7,7 @@ import React, { useState, useMemo } from 'react';
 import { EvaluationResult, PolicyProfile, SyntheticInteraction, UseCaseId } from '../types';
 import {
   computeConfusionMatrix,
+  computeGovernanceReport,
   generateTradeoffCurve,
   getConfusionMatrixItems,
 } from '../lib/metrics';
@@ -74,6 +75,16 @@ export const TrustMetricsTab: React.FC<TrustMetricsTabProps> = ({
       activeUseCase === 'ALL' ? undefined : activeUseCase,
     );
   }, [interactions, policyProfiles, activeUseCase]);
+
+  const governanceReport = useMemo(
+    () =>
+      computeGovernanceReport(
+        interactions,
+        evaluations,
+        activeUseCase === 'ALL' ? undefined : activeUseCase,
+      ),
+    [interactions, evaluations, activeUseCase],
+  );
 
   // Breakdown of items per quadrant for drill-down inspection
   const quadrantItems = useMemo(() => {
@@ -530,8 +541,9 @@ export const TrustMetricsTab: React.FC<TrustMetricsTabProps> = ({
                 </span>
               </div>
               <p className="text-xs text-[#475467] mt-2 leading-relaxed font-sans">
-                Dangerous/Violating Responses that were mistakenly{' '}
-                <strong className="text-[#B42318]">Allowed</strong> (Liability).
+                Violating responses that were{' '}
+                <strong className="text-[#B42318]">not blocked</strong>: delivered with a badge or
+                correction, or allowed (Liability).
               </p>
             </div>
 
@@ -608,7 +620,7 @@ export const TrustMetricsTab: React.FC<TrustMetricsTabProps> = ({
               Governance Report (FR-24)
             </h4>
             <p className="text-xs text-[#475467] leading-relaxed font-sans">
-              Against our 28-record benchmark dataset, the checker achieves a{' '}
+              Against our {governanceReport.total}-record labelled benchmark, the checker achieves a{' '}
               <strong className="text-[#067647]">{confusionMatrix.f1_score}% F1 score</strong> with
               a{' '}
               <strong className="text-[#B42318]">
@@ -619,15 +631,21 @@ export const TrustMetricsTab: React.FC<TrustMetricsTabProps> = ({
             <div className="glass-inset rounded-xl p-4 text-xs space-y-2 text-[#475467] font-mono tnum">
               <div className="flex justify-between">
                 <span>Total Monitored:</span>
-                <span className="text-[#101828] font-semibold">{interactions.length} pairs</span>
+                <span className="text-[#101828] font-semibold">{governanceReport.total} pairs</span>
               </div>
               <div className="flex justify-between">
-                <span>Multi-Lane Overlaps:</span>
-                <span className="text-[#B54708] font-semibold">100% detection</span>
+                <span>Multi-Lane Violations Detected:</span>
+                <span className="text-[#B54708] font-semibold">
+                  {governanceReport.multiLaneDetected} / {governanceReport.multiLaneTotal}
+                </span>
               </div>
               <div className="flex justify-between">
-                <span>Zero-Tolerance Escapes:</span>
-                <span className="text-[#067647] font-semibold">0 (0% FN)</span>
+                <span>Violations Allowed Unflagged:</span>
+                <span
+                  className={`font-semibold ${governanceReport.escapes === 0 ? 'text-[#067647]' : 'text-[#B42318]'}`}
+                >
+                  {governanceReport.escapes}
+                </span>
               </div>
             </div>
           </div>

@@ -84,6 +84,8 @@ export interface JudgeEvaluationData {
   reasoning: string;
   triggeringSpans?: string[];
   latencyMs?: number;
+  /** Served from the judge cache; latencyMs is the original judgement time. */
+  cached?: boolean;
   consensus?: 'AGREED' | 'DISAGREED';
   consensusNote?: string;
   scoreDeltas?: {

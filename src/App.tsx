@@ -22,7 +22,7 @@ import { LiveFeedTab } from './components/LiveFeedTab';
 import { ReviewQueueTab } from './components/ReviewQueueTab';
 import { PolicyProfilesTab } from './components/PolicyProfilesTab';
 import { TrustMetricsTab } from './components/TrustMetricsTab';
-import { InteractionTesterModal } from './components/InteractionTesterModal';
+import { GatewayPlaygroundModal } from './components/GatewayPlaygroundModal';
 import { AmbientShaderBackground } from './components/AmbientShaderBackground';
 import { ApiKeyPrompt } from './components/ApiKeyPrompt';
 import { StatusNotice, type Notice } from './components/StatusNotice';
@@ -85,7 +85,11 @@ export function App() {
 
   const [activeUseCase, setActiveUseCase] = useState<UseCaseId | 'ALL'>('ALL');
   const [policyUseCase, setPolicyUseCase] = useState<UseCaseId>('support_bot');
-  const [isTesterOpen, setIsTesterOpen] = useState<boolean>(false);
+  const [isPlaygroundOpen, setIsPlaygroundOpen] = useState<boolean>(false);
+  // Live Stream card to open once it arrives (set from the Gateway Playground)
+  const [feedFocusId, setFeedFocusId] = useState<string | null>(null);
+  // Bumped after a playground request so the live-event poll runs immediately
+  const [eventPollNonce, setEventPollNonce] = useState(0);
 
   // Judge Provider State (Gemini Cloud, Local Qwen 2.5: 7B, or Dual Consensus)
   const [selectedJudgeProvider, setSelectedJudgeProvider] = useState<JudgeProvider>(() => {
@@ -380,7 +384,7 @@ export function App() {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [authVersion]);
+  }, [authVersion, eventPollNonce]);
 
   // Durable escalations awaiting review (survive server restarts and event-buffer eviction)
   useEffect(() => {
@@ -565,7 +569,7 @@ export function App() {
         activeTab={activeTab}
         setActiveTab={handleSelectTab}
         reviewQueueCount={reviewQueueCount}
-        onOpenTester={() => setIsTesterOpen(true)}
+        onOpenPlayground={() => setIsPlaygroundOpen(true)}
         hasApiKey={true}
         activeProfileName={policyProfiles[policyUseCase]?.name || policyUseCase}
       />
@@ -580,7 +584,7 @@ export function App() {
               policyProfiles={policyProfiles}
               reviewDecisions={reviewDecisions}
               onNavigateTab={handleNavigateTab}
-              onOpenTester={() => setIsTesterOpen(true)}
+              onOpenPlayground={() => setIsPlaygroundOpen(true)}
             />
           )}
 
@@ -590,6 +594,9 @@ export function App() {
               liveInteractions={liveInteractions}
               evaluations={allEvaluations}
               onRunJudge={handleRunJudge}
+              onOpenGatewayPlayground={() => setIsPlaygroundOpen(true)}
+              focusInteractionId={feedFocusId}
+              onFocusHandled={() => setFeedFocusId(null)}
               activeUseCaseFilter={activeUseCase}
               setActiveUseCaseFilter={setActiveUseCase}
               streamTrigger={streamTrigger}
@@ -639,20 +646,16 @@ export function App() {
         </div>
       </main>
 
-      {/* 3. Interactive Sandbox Modal */}
-      <InteractionTesterModal
-        isOpen={isTesterOpen}
-        onClose={() => setIsTesterOpen(false)}
-        policyProfiles={policyProfiles}
-        onRunJudge={handleRunJudge}
-        judgeProvider={selectedJudgeProvider}
-        onSelectJudgeProvider={(p) => {
-          setSelectedJudgeProvider(p);
-          try {
-            localStorage.setItem('cp_judge_provider', p);
-          } catch {}
+      {/* 3. Gateway Playground: real OpenAI-compatible requests through the gateway */}
+      <GatewayPlaygroundModal
+        isOpen={isPlaygroundOpen}
+        onClose={() => setIsPlaygroundOpen(false)}
+        onRequestSent={() => setEventPollNonce((n) => n + 1)}
+        onViewInLiveStream={(interactionId) => {
+          setIsPlaygroundOpen(false);
+          if (interactionId) setFeedFocusId(interactionId);
+          handleNavigateTab('feed');
         }}
-        localLLMStatus={localLLMStatus}
       />
 
       {/* 4. Save / error status and API key prompt */}

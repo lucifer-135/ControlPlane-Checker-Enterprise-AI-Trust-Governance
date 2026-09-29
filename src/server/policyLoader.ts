@@ -47,8 +47,6 @@ export function parsePolicyYaml(raw: any): PolicyProfile | null {
       name: meta.title || meta.name || baseProfile.name,
       description: meta.description || baseProfile.description,
       geography_ruleset: spec.jurisdiction || baseProfile.geography_ruleset,
-      latency_budget_ms:
-        spec.enactment?.max_pipeline_latency_budget_ms || baseProfile.latency_budget_ms,
       pre_response_blocking:
         spec.enactment?.default_mode === 'FAIL_CLOSED' || baseProfile.pre_response_blocking,
       failMode: spec.enactment?.default_mode || 'FAIL_OPEN',
@@ -90,8 +88,6 @@ export function parsePolicyYaml(raw: any): PolicyProfile | null {
     name: raw.name || base.name,
     description: raw.description || base.description,
     geography_ruleset: raw.geography_ruleset || base.geography_ruleset,
-    latency_budget_ms:
-      raw.runtime_governance?.latency_budget_ms ?? raw.latency_budget_ms ?? base.latency_budget_ms,
     pre_response_blocking:
       raw.runtime_governance?.pre_response_blocking ??
       raw.pre_response_blocking ??

@@ -1,5 +1,5 @@
 # ControlPlane Checker Policy Profile
-# Generated: 2026-09-27T22:23:34.797Z
+# Generated: 2026-09-29T19:32:33.926Z
 version: "1.9.0"
 use_case: "internal_copilot"
 name: "Internal Knowledge Copilot Profile"
@@ -7,7 +7,6 @@ description: "Medium-latency budget. Focused on intellectual property protection
 geography_ruleset: "INTERNAL_IP_SECURITY"
 
 runtime_governance:
-  latency_budget_ms: 250
   pre_response_blocking: false
   fail_mode: "FAIL_OPEN"
   timeout_fallback: "UNKNOWN_FLAG"

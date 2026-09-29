@@ -10,7 +10,7 @@ ControlPlane Checker is an enterprise-grade AI trust, governance, and real-time 
 [![Express](https://img.shields.io/badge/Express-4.21-000000?logo=express&logoColor=white)](https://expressjs.com/)
 [![SQLite](https://img.shields.io/badge/SQLite-WAL_Mode-003B57?logo=sqlite&logoColor=white)](https://www.sqlite.org/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
-[![Vitest](https://img.shields.io/badge/Tests-286_Passing-6E9F18?logo=vitest&logoColor=white)](https://vitest.dev/)
+[![Vitest](https://img.shields.io/badge/Tests-322_Passing-6E9F18?logo=vitest&logoColor=white)](https://vitest.dev/)
 [![Google Gemini API](https://img.shields.io/badge/Google_Gemini-3.6%20%2F%203.8%20Flash-8E75B2?logo=google&logoColor=white)](https://ai.google.dev/)
 [![Ollama Qwen 2.5](https://img.shields.io/badge/Ollama-Qwen_2.5_7B-000000?logo=ollama&logoColor=white)](https://ollama.com/)
 
@@ -162,11 +162,12 @@ http://localhost:3000
 ### Additional commands
 
 - `npm run lint`: Static TypeScript type checking via `tsc --noEmit`.
-- `npm run test`: Executes the complete Vitest test suite (**286 tests passing across 26 test files**).
+- `npm run test`: Executes the complete Vitest test suite (**322 tests passing across 29 test files**).
 - `npm run test:coverage`: Generates comprehensive test coverage reports with v8.
 - `npm run bench`: Benchmarks decision engine and contradiction detector latency across 2k, 8k, and 32k token contexts (`scripts/bench-long-context.ts`).
 - `npm run demo:reset`: Pre-demo verification script that safely archives SQLite data, validates/provisions `AUDIT_HMAC_SECRET`, and probes Ollama readiness (`scripts/demo-reset.ts`).
 - `npm run demo:warm`: Pre-caches LLM judge evaluations across scenarios for lightning-fast presentation delivery (`scripts/demo-warm.ts`).
+- `npm run demo:gateway`: Acts as an external app and sends the pitch scenarios through `/v1/chat/completions` while the dashboard's Live Stream shows them arrive (`-- --all` for every scenario, `-- --only injection,pii-stream`, `-- --pause 10`) (`scripts/demo-gateway.ts`).
 - `npm run format`: Formats codebase with Prettier.
 - `npm run format:check`: Verifies code formatting compliance without modifying files.
 - `npm run clean`: Cleans generated build artifacts in `dist/`.
@@ -202,13 +203,14 @@ The platform includes a comprehensive, production-grade test suite covering the 
 npm run test
 ```
 
-### Test coverage areas (286 Passing Tests across 26 Test Suites)
+### Test coverage areas (322 Passing Tests across 29 Test Suites)
 
 | Test Suite | File | Tests | Coverage |
 | :--- | :--- | :---: | :--- |
 | **Responsibility Lane** | `src/lib/lanes/responsibilityLane.test.ts` | 29 | SSN, email, phone, credit card, individual compensation detection, job title preservation, address exclusion, regulatory rulesets |
 | **Decision Engine** | `src/lib/decisionEngine.test.ts` | 23 | Composite risk scoring, multi-lane overlaps, session decay, hard safety overrides |
 | **Stream Interceptor** | `src/server/streamInterceptor.test.ts` | 21 | SSE token interception, holdback buffer, emergency mid-stream cutoff, PII redaction |
+| **Gateway Playground Presets** | `src/server/gateway.scripted.test.ts` | 21 | Every preset's promised verdict, retrieved documents given to the model and used as evidence, scripted answers without a model call (JSON and stream), admin-only access, no baseline learning, workload tagging, per-request policy for admins vs key-bound policy |
 | **Forensic Tamper Detection** | `src/server/db/auditTamper.test.ts` | 17 | Chain tampering detection: payload mutation, deletion, reordering, re-signing prevention |
 | **Integration (HTTP)** | `src/server/integration.test.ts` | 16 | Real Express app: auth, RBAC, tenant scoping, PII redaction, circuit breaker |
 | **Gateway Wire Compatibility** | `src/server/gateway.compat.test.ts` | 15 | OpenAI SDK wire compatibility, streaming choices, tool calls, finish reasons |
@@ -224,11 +226,13 @@ npm run test
 | **Cost Lane (Welford)** | `src/lib/lanes/costLane.test.ts` | 9 | Dynamic Welford baselines, runaway loop detection, Z-score cutoff scaling |
 | **Long-Context Evaluation** | `src/lib/longContext.test.ts` | 8 | Grounding and contradiction detection on 2k, 8k, and 32k token contexts |
 | **Circuit Breaker** | `src/server/circuitBreaker.test.ts` | 8 | Upstream provider fault tolerance, state transitions, bounded half-open probe |
+| **Gateway Input-Guard Events** | `src/server/gateway.inputGuard.test.ts` | 8 | Blocked prompts recorded as audited, escalated live events without storing the matched PII; event payload minimization; demo scenario request building |
 | **Gateway Proxy** | `src/server/gateway.test.ts` | 8 | Model fallback, 503 backoff, PII redact/block, input guard pre-execution |
 | **Rolling Baselines** | `src/server/rollingBaseline.test.ts` | 7 | Online streaming Welford stats, validation, winsorization, versioned snapshots |
+| **Gateway Grounding** | `src/server/gateway.grounding.test.ts` | 7 | End-to-end gateway grounding enforcement, ungrounded refund blocking, documents counted once when sent in both the prompt and the header |
 | **Policy Loader** | `src/server/policyLoader.test.ts` | 6 | GitOps YAML parsing, duplicate use_case rejection, live write-back, round-trip |
-| **Gateway Grounding** | `src/server/gateway.grounding.test.ts` | 5 | End-to-end gateway grounding enforcement, ungrounded refund blocking |
 | **Gateway Events** | `src/server/gatewayEvents.test.ts` | 5 | PII event payload sanitization, tenant filters, sequence epochs, SSE backpressure |
+| **Model Catalog** | `src/lib/modelCatalog.test.ts` | 5 | Model-name routing to providers, chat-model filtering, `models/` de-duplication and grouping |
 | **Audit Chain** | `src/server/db/auditChain.test.ts` | 4 | SHA-256 HMAC cryptographic audit chaining & mathematical integrity verification |
 | **Gateway Disclaimers** | `src/server/gateway.disclaimer.test.ts` | 3 | Dynamic disclaimer and verification note injection on deliveries |
 | **Dev Watcher** | `src/server/devWatch.test.ts` | 2 | HMR watcher ignores runtime database state while keeping source data live |
@@ -396,8 +400,11 @@ ControlPlane Checker provides an OpenAI-compatible reverse-proxy endpoint at `/v
   - `X-ControlPlane-Verdict`: Active policy enactment (`ALLOW`, `BADGE`, `SOFT_CORRECT`, `BLOCK_ESCALATE`).
   - `X-ControlPlane-Risk-Score`: Normalized composite risk (0.00 - 1.00).
   - `X-ControlPlane-Session-Risk`: Compounded multi-turn risk.
-  - `X-ControlPlane-Policy-Version`: Active GitOps YAML policy version.
-  - `X-ControlPlane-Latency-Ms`: Added governance overhead.
+  - `X-ControlPlane-Policy` / `X-ControlPlane-Policy-Version`: The policy profile that governed the request and its GitOps YAML version.
+  - `X-ControlPlane-Latency-Ms`: Total time through the gateway, including the model call (non-streaming responses).
+  - `X-ControlPlane-Interaction-Id`: The audited interaction, as shown on the Live Stream (also returned for input-guard blocks).
+  - `X-ControlPlane-Response-Source`: `model`, or `scripted` for a scripted demo answer.
+- **Policy & Workload Selection**: A key's bound policy wins over `X-Policy-Profile` (admin keys and local development may choose per request); `X-ControlPlane-Workload` names the cost baseline a request is scored against.
 
 ## End-user delivery treatments & response shaping
 
@@ -476,7 +483,6 @@ description: "High-throughput, customer-facing tier. Strict against toxic langua
 geography_ruleset: "EU_AI_ACT_STANDARD"
 
 runtime_governance:
-  latency_budget_ms: 180
   pre_response_blocking: true
   fail_mode: "FAIL_OPEN"
   timeout_fallback: "UNKNOWN_FLAG"
@@ -573,12 +579,15 @@ Review decisions and audit records are **append-only**: SQLite triggers reject `
 - Adjudications are persisted directly to SQLite with automated session audit logging.
 - **Append-Only Decision Trail**: Recorded decisions cannot be edited or deleted (enforced by SQLite triggers). Each decision is attributed to the authenticated API key that made it, and a correction is recorded as a new decision.
 
-### 4. Interactive Sandbox Lab
+### 4. Gateway Playground
 
-- Live testing harness to input custom prompts, retrieved contexts, and candidate responses.
-- Evaluates inputs in real-time across all three lanes.
-- On-demand **Multi-Provider Judge**: switch between Google Gemini Cloud, Local Sovereign Qwen 2.5: 7B via Ollama, or Dual Judge Consensus.
-- Real-time Ollama status indicator with model detection and connectivity alerts.
+- Sends real OpenAI-compatible requests through `POST /v1/chat/completions`, exactly as an integrated app would.
+- One-click presets: security attacks (jailbreak, fake VP override, inbound PII), live-model scenarios (grounded answer, Air Canada-style refund promise, PII leak, PII leak mid-stream) and scripted scenarios (confidently wrong, redlining + SSN, runaway agent loop, clean answer).
+- Every preset carries realistic retrieved documents with source IDs (billing policies, a CRM record, an applicant file, a commit log, IT articles), sent the way a RAG app sends them: to the model in the system message, and to the gateway as evidence (`X-ControlPlane-Context`).
+- Custom requests: instructions, retrieved documents, user message, policy, workload baseline (`X-ControlPlane-Workload`), model (a searchable list of the gateway's chat models, or any model id) and streaming, with a live pre-flight input guard preview.
+- **Live model** or **Scripted** answers: a scripted answer is governed without calling a model (admin/dev only, labelled as scripted, never trains the cost baselines), so demos are repeatable.
+- Shows exactly what the app receives: HTTP status, verdict, delivered text with redactions and notes, governance headers and raw body, plus the same request as Python/curl.
+- Every request is audited and appended to the Live Stream; **View the full analysis** jumps to its card for the three-lane breakdown and the Gemini / Qwen / Dual LLM judge.
 
 ### 5. Policy Studio
 
@@ -607,7 +616,7 @@ Review decisions and audit records are **append-only**: SQLite triggers reject `
 | **Cloud LLM Judge**    | [@google/genai](https://www.npmjs.com/package/@google/genai)                   | Server-side integration with Gemini 3.6 / 3.8 Flash models    |
 | **Local LLM Judge**    | [Ollama](https://ollama.com/) (Qwen 2.5: 7B)                                   | Zero-egress sovereign on-premises evaluation                  |
 | **Server Bundler**     | [esbuild](https://esbuild.github.io/)                                          | Fast bundling of backend TypeScript into `dist/server.cjs`    |
-| **Test Runner**        | [Vitest 3](https://vitest.dev/)                                                | Unit testing and v8 coverage analysis (286 tests passing across 26 test suites) |
+| **Test Runner**        | [Vitest 3](https://vitest.dev/)                                                | Unit testing and v8 coverage analysis (322 tests passing across 29 test suites) |
 | **Containerization**   | [Docker](https://www.docker.com/)                                              | Multi-stage production container with health checks           |
 
 ## Security and privacy posture
@@ -641,7 +650,8 @@ ControlPlane-Checker/
 ├── scripts/                  # Benchmarking, demo initialization & cache warmers
 │   ├── bench-long-context.ts # RAG context latency benchmarks (2k -> 32k tokens)
 │   ├── demo-reset.ts         # Pre-demo DB archive, audit key & readiness checks
-│   └── demo-warm.ts          # LLM judge evaluation cache pre-warmer
+│   ├── demo-warm.ts          # LLM judge evaluation cache pre-warmer
+│   └── demo-gateway.ts       # Sends the demo scenarios through the live gateway
 ├── policies/                 # GitOps YAML Policy Profiles
 │   ├── support-bot.yaml      # Support Bot policy configuration
 │   ├── decision-support.yaml # Decision Support strict policy
@@ -659,10 +669,11 @@ ControlPlane-Checker/
 │   │   ├── DashboardTab.tsx            # Executive KPI & overview charts
 │   │   ├── GeminiJudgeResultCard.tsx   # Multi-Judge & Dual consensus evaluation card
 │   │   ├── GlassDropdown.tsx           # Accessible frosted glass dropdown component
-│   │   ├── Header.tsx                  # Global navigation bar & tester trigger
+│   │   ├── GatewayPlaygroundModal.tsx  # Gateway Playground: real requests through /v1/chat/completions
+│   │   ├── Header.tsx                  # Global navigation bar & Gateway Playground trigger
 │   │   ├── InteractionContextPanel.tsx # RAG context chunks, system prompt & history
-│   │   ├── InteractionTesterModal.tsx  # Live interactive sandbox with Judge selector
 │   │   ├── LiveFeedTab.tsx             # Real-time telemetry feed & stream
+│   │   ├── ModelPicker.tsx             # Searchable chat-model picker (Gateway Playground)
 │   │   ├── PolicyProfilesTab.tsx       # Per-use-case policy threshold editor
 │   │   ├── ReviewQueueTab.tsx          # Frontline HITL adjudication portal
 │   │   ├── StatusNotice.tsx            # Server connection & policy status banners
@@ -678,9 +689,12 @@ ControlPlane-Checker/
 │   │   ├── apiClient.ts                # Authenticated client helper for API routes
 │   │   ├── decisionEngine.ts           # 3-lane aggregator & session compounding
 │   │   ├── deliveryTreatment.ts       # End-user delivery treatments, notes & disclaimers
+│   │   ├── demoKey.ts                  # Published local-development API key
 │   │   ├── findings.ts                 # Human-readable claim finding summarizer
+│   │   ├── gatewayScenarios.ts         # Gateway demo scenarios (Playground, demo:gateway, tests)
 │   │   ├── inputGuard.ts               # Shared input guard & prompt injection rules
 │   │   ├── metrics.ts                  # Confusion matrix & PR calculations
+│   │   ├── modelCatalog.ts             # Model-name routing & chat-model catalog
 │   │   ├── policyProfiles.ts           # Fallback policy profile definitions
 │   │   ├── rollingBaseline.ts          # Welford algorithm online streaming tracker
 │   │   ├── lanes/                      # Individual Lane Evaluators

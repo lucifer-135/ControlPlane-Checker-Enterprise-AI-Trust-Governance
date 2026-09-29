@@ -27,6 +27,9 @@ import { piiTypeLabel } from './deliveryTreatment';
  * "Performance (Confidently Wrong) + Responsibility (PII Exposure)".
  */
 export function describeTriggeringFindings(evaluation: EvaluationResult): string {
+  if (evaluation.input_guard) {
+    return `Input Guard (${evaluation.input_guard.rules.join(', ') || 'Blocked'})`;
+  }
   if (evaluation.overlapping_lanes.length > 0) {
     return evaluation.overlapping_lanes.join(' + ');
   }

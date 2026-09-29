@@ -4,20 +4,14 @@
  */
 
 import React from 'react';
-import {
-  LayoutDashboard,
-  ShieldAlert,
-  Activity,
-  Sliders,
-  BarChart3,
-  FlaskConical,
-} from 'lucide-react';
+import { LayoutDashboard, ShieldAlert, Activity, Sliders, BarChart3, Radio } from 'lucide-react';
 
 interface HeaderProps {
   activeTab: 'dashboard' | 'feed' | 'review' | 'policy' | 'metrics';
   setActiveTab: (tab: 'dashboard' | 'feed' | 'review' | 'policy' | 'metrics') => void;
   reviewQueueCount: number;
-  onOpenTester: () => void;
+  /** Opens the Gateway Playground. */
+  onOpenPlayground: () => void;
   hasApiKey: boolean;
   activeProfileName?: string;
 }
@@ -26,7 +20,7 @@ export const Header: React.FC<HeaderProps> = ({
   activeTab,
   setActiveTab,
   reviewQueueCount,
-  onOpenTester,
+  onOpenPlayground,
 }) => {
   const navItems = [
     {
@@ -134,12 +128,12 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Trailing Action */}
         <div className="flex items-center gap-4">
           <button
-            onClick={onOpenTester}
-            className="glass-btn-primary group/sandbox text-white px-4 py-2 rounded-xl flex items-center gap-2 text-[13px] font-medium cursor-pointer transition-all duration-200 hover:shadow-[0_6px_20px_rgba(79,70,229,0.4)] hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98]"
-            title="Open Interactive Governance Sandbox Lab"
+            onClick={onOpenPlayground}
+            className="glass-btn-primary group/playground text-white px-4 py-2 rounded-xl flex items-center gap-2 text-[13px] font-medium cursor-pointer transition-all duration-200 hover:shadow-[0_6px_20px_rgba(79,70,229,0.4)] hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98]"
+            title="Send requests through the governance gateway"
           >
-            <FlaskConical className="h-3.5 w-3.5 transition-transform duration-200 group-hover/sandbox:rotate-12 group-hover/sandbox:scale-110" />
-            <span>Sandbox Lab</span>
+            <Radio className="h-3.5 w-3.5 transition-transform duration-200 group-hover/playground:scale-110" />
+            <span>Gateway Playground</span>
           </button>
         </div>
       </div>

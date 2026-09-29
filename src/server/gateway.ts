@@ -8,7 +8,8 @@
  *
  * Implements POST /v1/chat/completions as a drop-in proxy that:
  * 1. Uses the authenticated principal (tenant, key-bound policy)
- * 2. Resolves the policy profile from the API key or headers
+ * 2. Resolves the policy profile: a key's bound policy, or X-Policy-Profile for admins,
+ *    local development and unbound keys
  * 3. Runs pre-flight input guards (prompt injection)
  * 4. Forwards to upstream LLM provider (guarded by a circuit breaker)
  * 5. Intercepts the response (streaming or non-streaming)
@@ -25,7 +26,11 @@ import crypto from 'crypto';
 import type { Request, Response } from 'express';
 import { evaluateInteraction } from '../lib/decisionEngine.js';
 import { evaluateResponsibilityLane } from '../lib/lanes/responsibilityLane.js';
-import { deliveryNote, WITHHELD_RESPONSE } from '../lib/deliveryTreatment.js';
+import {
+  deliveryNote,
+  inputGuardErrorMessage,
+  WITHHELD_RESPONSE,
+} from '../lib/deliveryTreatment.js';
 import type {
   ConversationTurn,
   EvaluationResult,
@@ -40,14 +45,16 @@ import { calculateBackoffWithJitter, sleep } from './judge.js';
 import { globalBaselineTracker } from './rollingBaseline.js';
 import { insertAuditLog } from './db/database.js';
 import { recordEvaluationTelemetry, recordCircuitBreakerTrip } from './telemetry.js';
-import { tenantStampFor, type AuthenticatedRequest } from './auth.js';
+import { tenantStampFor, type AuthenticatedRequest, type Principal } from './auth.js';
+import { SCRIPTED_MODEL_NAME } from '../lib/gatewayScenarios.js';
+import { upstreamProviderFor, type UpstreamProviderId } from '../lib/modelCatalog.js';
 import { emitGatewayEvent, redactPiiSpans } from './gatewayEvents.js';
 
 // ──────────────────────────────────────────────────────────────────────
 // Upstream Provider Configuration
 // ──────────────────────────────────────────────────────────────────────
 
-export type UpstreamProviderId = 'gemini' | 'openai' | 'anthropic' | 'ollama';
+export type { UpstreamProviderId };
 
 interface UpstreamProvider {
   id: UpstreamProviderId;
@@ -125,18 +132,7 @@ const UPSTREAM_PROVIDERS: Record<UpstreamProviderId, UpstreamProvider> = {
  * Resolves which upstream provider to use based on the model string.
  */
 export function resolveUpstreamProvider(model: string): UpstreamProvider {
-  const modelLower = model.toLowerCase();
-  if (modelLower.includes('qwen') || modelLower.includes('ollama')) {
-    return UPSTREAM_PROVIDERS.ollama;
-  }
-  if (modelLower.includes('gemini') || modelLower.includes('models/')) {
-    return UPSTREAM_PROVIDERS.gemini;
-  }
-  if (modelLower.includes('claude') || modelLower.includes('anthropic')) {
-    return UPSTREAM_PROVIDERS.anthropic;
-  }
-  // Default to OpenAI for gpt-* models or unknown
-  return UPSTREAM_PROVIDERS.openai;
+  return UPSTREAM_PROVIDERS[upstreamProviderFor(model)];
 }
 
 /**
@@ -412,9 +408,16 @@ export function extractRequestGrounding(
     }
   }
 
+  // A RAG app usually puts its documents in the system message and may also declare
+  // them in the header: count them once. What remains of the system message is then
+  // evidence only if it is still substantial, like any system message.
+  const systemEvidence =
+    headerContext && systemPrompt?.includes(headerContext)
+      ? systemPrompt.replace(headerContext, '').trim()
+      : (systemPrompt ?? '');
   const evidence = [
     headerContext,
-    systemPrompt && systemPrompt.length >= MIN_SYSTEM_CONTEXT_CHARS ? systemPrompt : '',
+    systemEvidence.length >= MIN_SYSTEM_CONTEXT_CHARS ? systemEvidence : '',
   ].filter(Boolean);
 
   return {
@@ -423,6 +426,95 @@ export function extractRequestGrounding(
     retrievedContext: evidence.length > 0 ? evidence.join('\n\n') : null,
     history,
   };
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Input guard blocks
+// ──────────────────────────────────────────────────────────────────────
+
+interface InputGuardBlock {
+  inputGuard: InputGuardResult;
+  grounding: RequestGrounding;
+  policy: PolicyProfile;
+  policyKey: string;
+  tenant: { orgId: string; workspaceId: string };
+  model: string;
+  isStreaming: boolean;
+  sessionId: string;
+  turnNumber: number;
+  queryType: string;
+}
+
+/**
+ * Turns a rejected prompt into a governed record: an audit entry, telemetry, a
+ * live event and a review-queue escalation, plus session risk (repeated attempts
+ * add up). The model was never called, so there is no response to evaluate; the
+ * guard's finding is attached instead, without the matched text (it may be PII).
+ */
+export function recordInputGuardBlock(block: InputGuardBlock): EvaluationResult {
+  const { inputGuard, grounding, policy, policyKey, tenant, model, sessionId, turnNumber } = block;
+  const interaction: SyntheticInteraction = {
+    id: newInteractionId('guard'),
+    use_case: policy.use_case,
+    session_id: sessionId,
+    turn_number: turnNumber,
+    query_type: block.queryType,
+    prompt: grounding.lastUserMessage,
+    system_prompt: grounding.systemPrompt,
+    history: grounding.history,
+    retrieved_context: grounding.retrievedContext,
+    response: '',
+    token_count: { prompt: 0, completion: 0, total: 0 },
+    latency_ms: 0,
+    ground_truth_labels: ['clean'],
+    metadata: { created_at: new Date().toISOString(), model_name: model },
+  };
+
+  const sessionKey = `${tenant.orgId}:${tenant.workspaceId}:${sessionId}`;
+  const scored = evaluateInteraction(interaction, policy, getSessionState(sessionKey));
+  const rules = (inputGuard.details ?? []).map((d) => d.name || d.category);
+  const evaluation: EvaluationResult = {
+    ...scored,
+    composite_risk_score: Math.max(scored.composite_risk_score, inputGuard.riskScore),
+    verdict: 'BLOCK_ESCALATE',
+    is_pre_response_blocked: true,
+    is_flagged_for_review: true,
+    overlapping_lanes: [`Input Guard (${rules[0] ?? 'Blocked'})`],
+    has_multi_lane_overlap: false,
+    input_guard: {
+      reason: inputGuard.reason || 'Blocked',
+      risk_score: inputGuard.riskScore,
+      detections: inputGuard.detections,
+      rules,
+    },
+  };
+  updateSessionState(sessionKey, evaluation.composite_risk_score, turnNumber);
+
+  try {
+    insertAuditLog(interaction, evaluation, { tenant });
+    recordEvaluationTelemetry(
+      evaluation.verdict,
+      evaluation.use_case,
+      [],
+      false,
+      false,
+      evaluation.added_overhead_latency_ms,
+    );
+  } catch (err) {
+    console.warn('[Gateway] Failed to persist audit/telemetry for input-guard block:', err);
+  }
+
+  emitGatewayEvent({
+    interaction,
+    evaluation,
+    tenantOrgId: tenant.orgId,
+    tenantWorkspaceId: tenant.workspaceId,
+    policyProfile: policyKey,
+    model,
+    isStreaming: block.isStreaming,
+    timestamp: new Date().toISOString(),
+  });
+  return evaluation;
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -540,6 +632,319 @@ export async function handleRetrieveModel(req: Request, res: Response): Promise<
 }
 
 // ──────────────────────────────────────────────────────────────────────
+// Request options: workload tag and scripted responses
+// ──────────────────────────────────────────────────────────────────────
+
+/** Header naming the request's workload (its cost-lane baseline), e.g. "refund_policy". */
+export const WORKLOAD_HEADER = 'x-controlplane-workload';
+
+/** Workload from the request header; untagged traffic shares one gateway baseline. */
+export function workloadFromHeader(value: string | string[] | undefined): string {
+  const raw = (Array.isArray(value) ? value[0] : value)?.trim().toLowerCase() ?? '';
+  return /^[a-z0-9_]{1,64}$/.test(raw) ? raw : 'gateway_request';
+}
+
+export interface ScriptedResponse {
+  text: string;
+  /** Total tokens to report (prompt + completion); estimated from the text when absent. */
+  totalTokens?: number;
+  /** Latency to record for the cost lane; the measured time when absent. */
+  latencyMs?: number;
+}
+
+/**
+ * A scripted response (request body `controlplane.scripted_response`) supplies the
+ * model's answer: the gateway governs it exactly like a real one, but no model is
+ * called. The Gateway Playground uses it for repeatable demos. It is recorded as
+ * model "scripted-response" and never used to learn cost baselines.
+ */
+export function parseScriptedResponse(extension: unknown): ScriptedResponse | null {
+  if (!extension || typeof extension !== 'object') return null;
+  const ext = extension as Record<string, unknown>;
+  if (typeof ext.scripted_response !== 'string' || !ext.scripted_response.trim()) return null;
+  const count = (value: unknown) => {
+    const n = Number(value);
+    return value !== undefined && value !== null && Number.isFinite(n) && n >= 0
+      ? Math.round(n)
+      : undefined;
+  };
+  return {
+    text: ext.scripted_response,
+    totalTokens: count(ext.total_tokens),
+    latencyMs: count(ext.latency_ms),
+  };
+}
+
+/** Only local development and admins may put model output of their own into the audit trail. */
+function canUseScriptedResponses(principal: Principal | undefined): boolean {
+  return !principal || principal.kind === 'local_dev' || principal.role === 'admin';
+}
+
+/** Delay between scripted stream chunks, so a scripted stream looks like live tokens. */
+const SCRIPTED_STREAM_CHUNK_MS = 15;
+
+/** An OpenAI-shaped upstream response (JSON or SSE) carrying the scripted answer. */
+function scriptedUpstreamResponse(
+  scripted: ScriptedResponse,
+  promptText: string,
+  model: string,
+  stream: boolean,
+): globalThis.Response {
+  const promptTokens = Math.ceil(promptText.length / 4);
+  const completionTokens =
+    scripted.totalTokens !== undefined && scripted.totalTokens > promptTokens
+      ? scripted.totalTokens - promptTokens
+      : Math.ceil(scripted.text.length / 4);
+  const usage = {
+    prompt_tokens: promptTokens,
+    completion_tokens: completionTokens,
+    total_tokens: promptTokens + completionTokens,
+  };
+  const id = `chatcmpl-scripted-${crypto.randomBytes(4).toString('hex')}`;
+  const created = Math.floor(Date.now() / 1000);
+
+  if (!stream) {
+    return new Response(
+      JSON.stringify({
+        id,
+        object: 'chat.completion',
+        created,
+        model,
+        choices: [
+          {
+            index: 0,
+            message: { role: 'assistant', content: scripted.text },
+            finish_reason: 'stop',
+            logprobs: null,
+          },
+        ],
+        usage,
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    );
+  }
+
+  // Sent in small pieces, like tokens, so the stream interceptor handles a real stream
+  const encoder = new TextEncoder();
+  const event = (payload: unknown) => encoder.encode(`data: ${JSON.stringify(payload)}\n\n`);
+  const chunk = (delta: Record<string, unknown>, finishReason: string | null = null) =>
+    event({
+      id,
+      object: 'chat.completion.chunk',
+      created,
+      model,
+      choices: [{ index: 0, delta, finish_reason: finishReason }],
+    });
+  let cancelled = false;
+  return new Response(
+    new ReadableStream({
+      async start(controller) {
+        try {
+          controller.enqueue(chunk({ role: 'assistant' }));
+          for (const piece of scripted.text.match(/[\s\S]{1,12}/g) ?? []) {
+            if (cancelled) return;
+            controller.enqueue(chunk({ content: piece }));
+            await sleep(SCRIPTED_STREAM_CHUNK_MS);
+          }
+          if (cancelled) return;
+          controller.enqueue(chunk({}, 'stop'));
+          controller.enqueue(
+            event({ id, object: 'chat.completion.chunk', created, model, choices: [], usage }),
+          );
+          controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+          controller.close();
+        } catch {
+          // The interceptor cancelled the stream (e.g. it cut it on a violation)
+        }
+      },
+      cancel() {
+        cancelled = true;
+      },
+    }),
+    { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+  );
+}
+
+/**
+ * Calls the upstream provider with provider-scoped model fallback, exponential
+ * backoff and the circuit breaker. Returns the response and the model that served
+ * it, or null when an error response has already been sent to the client.
+ */
+async function forwardToUpstream(
+  forwardBody: Record<string, unknown>,
+  requestedModel: string,
+  isStreaming: boolean,
+  policy: PolicyProfile,
+  res: Response,
+): Promise<{ response: globalThis.Response; model: string } | null> {
+  const provider = resolveUpstreamProvider(requestedModel);
+  const apiKey = providerApiKey(provider);
+  if (!apiKey) {
+    res.status(500).json({
+      error: {
+        message: `No API key configured for ${provider.name} (env: ${provider.apiKeyEnvVar})`,
+        type: 'configuration_error',
+      },
+    });
+    return null;
+  }
+
+  // Circuit breaker check
+  const failMode = policy.failMode || 'FAIL_OPEN';
+  if (!upstreamBreaker.canRequest()) {
+    if (failMode === 'FAIL_CLOSED') {
+      res.status(503).json({
+        error: {
+          message: 'Upstream LLM provider circuit breaker OPEN. Service temporarily unavailable.',
+          type: 'service_unavailable',
+          code: 'circuit_breaker_open',
+        },
+      });
+      return null;
+    }
+    // FAIL_OPEN: serve a safe fallback without touching the failed upstream.
+    console.warn('[Gateway] Circuit breaker OPEN — FAIL_OPEN mode, serving safe fallback');
+    res.status(200).json(safeFallbackCompletion('Upstream circuit breaker open', []));
+    return null;
+  }
+
+  // A HALF_OPEN breaker grants one bounded probe: requested model, one attempt.
+  const isProbe = upstreamBreaker.isProbing();
+  const modelsToTry = isProbe ? [requestedModel] : buildModelCandidates(requestedModel);
+  const MAX_RETRIES_PER_MODEL = isProbe ? 1 : 3;
+
+  // Forward to upstream with provider-scoped model fallback & exponential backoff
+  const upstreamUrl = `${provider.baseUrl}/chat/completions`;
+  const upstreamHeaders: Record<string, string> = {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${apiKey}`,
+  };
+
+  let upstreamResponse: globalThis.Response | null = null;
+  let usedModel = requestedModel;
+  let lastError = '';
+
+  for (const candidateModel of modelsToTry) {
+    let candidateResolved = false;
+
+    for (let attempt = 0; attempt < MAX_RETRIES_PER_MODEL; attempt++) {
+      try {
+        const upstreamBody = {
+          ...forwardBody,
+          model: candidateModel,
+          stream: isStreaming,
+        };
+
+        const resp = await fetch(upstreamUrl, {
+          method: 'POST',
+          headers: upstreamHeaders,
+          body: JSON.stringify(upstreamBody),
+        });
+
+        if (resp.ok) {
+          upstreamResponse = resp;
+          usedModel = candidateModel;
+          upstreamBreaker.recordSuccess();
+          if (candidateModel !== requestedModel) {
+            console.log(
+              `[Gateway] Model fallback: ${requestedModel} → ${candidateModel} (success)`,
+            );
+          }
+          candidateResolved = true;
+          break;
+        }
+
+        // Transient provider errors: retry with backoff, then move to the next model
+        if (provider.retryableStatuses.includes(resp.status)) {
+          const errText = await resp.text();
+          lastError = errText;
+          if (attempt < MAX_RETRIES_PER_MODEL - 1) {
+            const delayMs = calculateBackoffWithJitter(attempt, 2000, 16000, 500);
+            console.warn(
+              `[Gateway] ${provider.name} model ${candidateModel} returned ${resp.status}. Backing off for ${delayMs}ms with jitter (attempt ${attempt + 1}/${MAX_RETRIES_PER_MODEL})...`,
+            );
+            await sleep(delayMs);
+            continue;
+          } else {
+            console.warn(
+              `[Gateway] ${provider.name} model ${candidateModel} retries exhausted (${resp.status}), advancing to next model tier...`,
+            );
+            if (!isProbe) await sleep(1000);
+            break;
+          }
+        }
+
+        // Model not available on this provider — skip candidate without retries
+        if (provider.modelUnavailableStatuses.includes(resp.status)) {
+          const errText = await resp.text();
+          lastError = errText;
+          console.warn(
+            `[Gateway] ${provider.name} model ${candidateModel} returned ${resp.status} (unavailable), skipping to next tier...`,
+          );
+          break;
+        }
+
+        // Non-retryable error — return immediately. Only upstream-side (5xx)
+        // failures count against the breaker; a 4xx proves the provider is reachable.
+        const errorBody = await resp.text();
+        if (resp.status >= 500) {
+          upstreamBreaker.recordFailure();
+        } else {
+          upstreamBreaker.recordSuccess();
+        }
+        res.status(resp.status).json(
+          upstreamErrorBody(errorBody) ?? {
+            error: {
+              message: `Upstream error: ${errorBody}`,
+              type: 'upstream_error',
+            },
+          },
+        );
+        return null;
+      } catch (err: any) {
+        lastError = err.message;
+        if (attempt < MAX_RETRIES_PER_MODEL - 1) {
+          const delayMs = calculateBackoffWithJitter(attempt, 2000, 16000, 500);
+          console.warn(
+            `[Gateway] Model ${candidateModel} network error: ${err.message}. Retrying in ${delayMs}ms...`,
+          );
+          await sleep(delayMs);
+        } else {
+          console.warn(
+            `[Gateway] Model ${candidateModel} network retries exhausted: ${err.message}, trying next...`,
+          );
+          if (!isProbe) await sleep(1000);
+          break;
+        }
+      }
+    }
+
+    if (candidateResolved) {
+      break;
+    }
+  }
+
+  // All models exhausted
+  if (!upstreamResponse) {
+    upstreamBreaker.recordFailure();
+    if (failMode === 'FAIL_CLOSED') {
+      res.status(502).json({
+        error: {
+          message: `All upstream models unavailable. Last error: ${lastError}`,
+          type: 'upstream_error',
+        },
+      });
+      return null;
+    }
+    // FAIL_OPEN: return a safe fallback
+    res.status(200).json(safeFallbackCompletion('All upstream models unavailable', modelsToTry));
+    return null;
+  }
+
+  return { response: upstreamResponse, model: usedModel };
+}
+
+// ──────────────────────────────────────────────────────────────────────
 // Main Gateway Handler
 // ──────────────────────────────────────────────────────────────────────
 
@@ -555,19 +960,27 @@ export async function handleChatCompletions(
     const model = body.model || 'gemini-3.6-flash';
     const isStreaming = body.stream === true;
     const messages = body.messages || [];
+    // Gateway options travel in `controlplane`; they are never forwarded to the provider
+    const { controlplane: gatewayOptions, ...forwardBody } = body;
 
-    // ── 1. Resolve tenant & policy profile ──
-    // Prefer tenant-bound policy from authenticated API key, then header, then default
+    // ── 1. Resolve tenant, policy profile, session and workload ──
+    // A key's bound policy wins over the header, so a service key cannot pick a laxer
+    // policy. Admins and local development may choose any policy per request (they can
+    // edit policies anyway), e.g. from the Gateway Playground.
     const authReq = req as AuthenticatedRequest;
+    const headerPolicy = req.headers['x-policy-profile'] as string | undefined;
+    const principal = authReq.principal;
+    const mayChoosePolicy =
+      !principal || principal.kind === 'local_dev' || principal.role === 'admin';
     const policyKey =
-      authReq.resolvedPolicy || (req.headers['x-policy-profile'] as string) || 'support_bot';
+      (mayChoosePolicy && headerPolicy) || authReq.resolvedPolicy || headerPolicy || 'support_bot';
     const tenant = authReq.principal
       ? tenantStampFor(authReq.principal)
       : {
           orgId: authReq.orgId || 'anonymous',
           workspaceId: authReq.workspaceId || 'default',
         };
-    const policy = policyProfiles[policyKey];
+    const policy = Object.hasOwn(policyProfiles, policyKey) ? policyProfiles[policyKey] : undefined;
     if (!policy) {
       res.status(400).json({
         error: {
@@ -577,6 +990,10 @@ export async function handleChatCompletions(
       });
       return;
     }
+    const sessionId = (req.headers['x-session-id'] as string) || newInteractionId('anon');
+    const sessionKey = `${tenant.orgId}:${tenant.workspaceId}:${sessionId}`;
+    const turnNumber = parseInt((req.headers['x-turn-number'] as string) || '1', 10) || 1;
+    const queryType = workloadFromHeader(req.headers[WORKLOAD_HEADER]);
 
     // ── 2. Pre-flight input guard (safely handling string or multimodal parts) ──
     // Per-key rate limiting already happened in the auth middleware.
@@ -585,9 +1002,27 @@ export async function handleChatCompletions(
 
     const inputGuard: InputGuardResult = scanInput(lastUserMessage);
     if (!inputGuard.pass) {
+      // Recorded like any governed interaction, so the attempt is audited and visible
+      const blocked = recordInputGuardBlock({
+        inputGuard,
+        grounding,
+        policy,
+        policyKey,
+        tenant,
+        model,
+        isStreaming,
+        sessionId,
+        turnNumber,
+        queryType,
+      });
+      res.set({
+        'X-ControlPlane-Interaction-Id': blocked.interaction_id,
+        'X-ControlPlane-Verdict': blocked.verdict,
+        'X-ControlPlane-Policy': policyKey,
+      });
       res.status(400).json({
         error: {
-          message: `Request blocked by input guard: ${inputGuard.reason}`,
+          message: inputGuardErrorMessage(inputGuard.reason || 'Blocked'),
           type: 'content_filter_error',
           code: 'input_guard_violation',
         },
@@ -600,179 +1035,38 @@ export async function handleChatCompletions(
       return;
     }
 
-    // ── 3. Resolve upstream provider & provider-specific model candidates ──
-    const requestedModel = model;
-    const provider = resolveUpstreamProvider(requestedModel);
-    const apiKey = providerApiKey(provider);
-    if (!apiKey) {
-      res.status(500).json({
-        error: {
-          message: `No API key configured for ${provider.name} (env: ${provider.apiKeyEnvVar})`,
-          type: 'configuration_error',
-        },
-      });
-      return;
-    }
-
-    // ── 4. Circuit breaker check ──
-    const failMode = policy.failMode || 'FAIL_OPEN';
-    if (!upstreamBreaker.canRequest()) {
-      if (failMode === 'FAIL_CLOSED') {
-        res.status(503).json({
+    // ── 3. The model's response: from the real upstream, or scripted by the tester ──
+    const scripted = parseScriptedResponse(gatewayOptions);
+    let upstream: { response: globalThis.Response; model: string } | null;
+    if (scripted) {
+      if (!canUseScriptedResponses(authReq.principal)) {
+        res.status(403).json({
           error: {
-            message: 'Upstream LLM provider circuit breaker OPEN. Service temporarily unavailable.',
-            type: 'service_unavailable',
-            code: 'circuit_breaker_open',
+            message: 'Scripted responses require local dev mode or an admin API key.',
+            type: 'permission_error',
+            code: 'scripted_response_forbidden',
           },
         });
         return;
       }
-      // FAIL_OPEN: serve a safe fallback without touching the failed upstream.
-      console.warn('[Gateway] Circuit breaker OPEN — FAIL_OPEN mode, serving safe fallback');
-      res.status(200).json(safeFallbackCompletion('Upstream circuit breaker open', []));
-      return;
+      upstream = {
+        response: scriptedUpstreamResponse(
+          scripted,
+          [grounding.systemPrompt, lastUserMessage].filter(Boolean).join('\n'),
+          model,
+          isStreaming,
+        ),
+        model: SCRIPTED_MODEL_NAME,
+      };
+    } else {
+      upstream = await forwardToUpstream(forwardBody, model, isStreaming, policy, res);
+      if (!upstream) return;
     }
+    const { response: upstreamResponse, model: usedModel } = upstream;
+    const responseSource = scripted ? 'scripted' : 'model';
 
-    // A HALF_OPEN breaker grants one bounded probe: requested model, one attempt.
-    const isProbe = upstreamBreaker.isProbing();
-    const modelsToTry = isProbe ? [requestedModel] : buildModelCandidates(requestedModel);
-    const MAX_RETRIES_PER_MODEL = isProbe ? 1 : 3;
-
-    // ── 5. Forward to upstream with provider-scoped model fallback & exponential backoff ──
-    const upstreamUrl = `${provider.baseUrl}/chat/completions`;
-    const upstreamHeaders: Record<string, string> = {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    };
-
-    let upstreamResponse: globalThis.Response | null = null;
-    let usedModel = requestedModel;
-    let lastError = '';
-
-    for (const candidateModel of modelsToTry) {
-      let candidateResolved = false;
-
-      for (let attempt = 0; attempt < MAX_RETRIES_PER_MODEL; attempt++) {
-        try {
-          const upstreamBody = {
-            ...body,
-            model: candidateModel,
-            stream: isStreaming,
-          };
-
-          const resp = await fetch(upstreamUrl, {
-            method: 'POST',
-            headers: upstreamHeaders,
-            body: JSON.stringify(upstreamBody),
-          });
-
-          if (resp.ok) {
-            upstreamResponse = resp;
-            usedModel = candidateModel;
-            upstreamBreaker.recordSuccess();
-            if (candidateModel !== requestedModel) {
-              console.log(
-                `[Gateway] Model fallback: ${requestedModel} → ${candidateModel} (success)`,
-              );
-            }
-            candidateResolved = true;
-            break;
-          }
-
-          // Transient provider errors: retry with backoff, then move to the next model
-          if (provider.retryableStatuses.includes(resp.status)) {
-            const errText = await resp.text();
-            lastError = errText;
-            if (attempt < MAX_RETRIES_PER_MODEL - 1) {
-              const delayMs = calculateBackoffWithJitter(attempt, 2000, 16000, 500);
-              console.warn(
-                `[Gateway] ${provider.name} model ${candidateModel} returned ${resp.status}. Backing off for ${delayMs}ms with jitter (attempt ${attempt + 1}/${MAX_RETRIES_PER_MODEL})...`,
-              );
-              await sleep(delayMs);
-              continue;
-            } else {
-              console.warn(
-                `[Gateway] ${provider.name} model ${candidateModel} retries exhausted (${resp.status}), advancing to next model tier...`,
-              );
-              if (!isProbe) await sleep(1000);
-              break;
-            }
-          }
-
-          // Model not available on this provider — skip candidate without retries
-          if (provider.modelUnavailableStatuses.includes(resp.status)) {
-            const errText = await resp.text();
-            lastError = errText;
-            console.warn(
-              `[Gateway] ${provider.name} model ${candidateModel} returned ${resp.status} (unavailable), skipping to next tier...`,
-            );
-            break;
-          }
-
-          // Non-retryable error — return immediately. Only upstream-side (5xx)
-          // failures count against the breaker; a 4xx proves the provider is reachable.
-          const errorBody = await resp.text();
-          if (resp.status >= 500) {
-            upstreamBreaker.recordFailure();
-          } else {
-            upstreamBreaker.recordSuccess();
-          }
-          res.status(resp.status).json(
-            upstreamErrorBody(errorBody) ?? {
-              error: {
-                message: `Upstream error: ${errorBody}`,
-                type: 'upstream_error',
-              },
-            },
-          );
-          return;
-        } catch (err: any) {
-          lastError = err.message;
-          if (attempt < MAX_RETRIES_PER_MODEL - 1) {
-            const delayMs = calculateBackoffWithJitter(attempt, 2000, 16000, 500);
-            console.warn(
-              `[Gateway] Model ${candidateModel} network error: ${err.message}. Retrying in ${delayMs}ms...`,
-            );
-            await sleep(delayMs);
-          } else {
-            console.warn(
-              `[Gateway] Model ${candidateModel} network retries exhausted: ${err.message}, trying next...`,
-            );
-            if (!isProbe) await sleep(1000);
-            break;
-          }
-        }
-      }
-
-      if (candidateResolved) {
-        break;
-      }
-    }
-
-    // All models exhausted
-    if (!upstreamResponse) {
-      upstreamBreaker.recordFailure();
-      if (failMode === 'FAIL_CLOSED') {
-        res.status(502).json({
-          error: {
-            message: `All upstream models unavailable. Last error: ${lastError}`,
-            type: 'upstream_error',
-          },
-        });
-        return;
-      }
-      // FAIL_OPEN: return a safe fallback
-      res.status(200).json(safeFallbackCompletion('All upstream models unavailable', modelsToTry));
-      return;
-    }
-
-    // ── 6. Handle streaming vs non-streaming ──
-    const sessionId = (req.headers['x-session-id'] as string) || newInteractionId('anon');
-    const sessionKey = `${tenant.orgId}:${tenant.workspaceId}:${sessionId}`;
-    const turnNumber = parseInt((req.headers['x-turn-number'] as string) || '1', 10) || 1;
-
+    // ── 4. Streaming: the stream interceptor records audit, telemetry and the gateway event ──
     if (isStreaming) {
-      // Streaming: the stream interceptor records audit, telemetry and the gateway event
       const sessionState = getSessionState(sessionKey);
       await interceptStream(
         upstreamResponse,
@@ -790,12 +1084,16 @@ export async function handleChatCompletions(
           systemPrompt: grounding.systemPrompt,
           history: grounding.history,
           retrievedContext: grounding.retrievedContext,
+          interactionId: newInteractionId('stream'),
+          queryType,
+          latencyMs: scripted?.latencyMs,
+          responseSource,
         },
       );
       return;
     }
 
-    // ── 7. Non-streaming: full response evaluation ──
+    // ── 5. Non-streaming: full response evaluation ──
     let upstreamData: any;
     try {
       upstreamData = await upstreamResponse.json();
@@ -822,7 +1120,7 @@ export async function handleChatCompletions(
       use_case: policy.use_case,
       session_id: sessionId,
       turn_number: turnNumber,
-      query_type: 'gateway_request',
+      query_type: queryType,
       prompt: lastUserMessage,
       system_prompt: grounding.systemPrompt,
       history: grounding.history,
@@ -833,7 +1131,7 @@ export async function handleChatCompletions(
         completion: upstreamData.usage?.completion_tokens || 0,
         total: upstreamData.usage?.total_tokens || 0,
       },
-      latency_ms: Math.round(performance.now() - startTime),
+      latency_ms: scripted?.latencyMs ?? Math.round(performance.now() - startTime),
       ground_truth_labels: ['clean'],
       metadata: {
         created_at: new Date().toISOString(),
@@ -846,8 +1144,8 @@ export async function handleChatCompletions(
       globalBaselineTracker.getBaseline(u, q),
     );
 
-    // Learn only from trusted traffic, and only after scoring
-    learnFromTrustedObservation(interaction, evaluation);
+    // Learn only from trusted, real traffic, and only after scoring
+    if (!scripted) learnFromTrustedObservation(interaction, evaluation);
 
     // Update session state
     updateSessionState(sessionKey, evaluation.composite_risk_score, turnNumber);
@@ -887,9 +1185,12 @@ export async function handleChatCompletions(
       'X-ControlPlane-Policy-Version': policy.version,
       'X-ControlPlane-Latency-Ms': Math.round(performance.now() - startTime).toString(),
       'X-ControlPlane-Tenant': tenant.orgId,
+      'X-ControlPlane-Interaction-Id': interaction.id,
+      'X-ControlPlane-Response-Source': responseSource,
+      'X-ControlPlane-Policy': policyKey,
     });
 
-    // ── 8. Apply verdict ──
+    // ── 6. Apply verdict ──
     if (evaluation.verdict === 'BLOCK_ESCALATE' && policy.pre_response_blocking) {
       const withheld = (index: number) => ({
         index,

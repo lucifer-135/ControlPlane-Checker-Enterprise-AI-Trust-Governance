@@ -12,7 +12,6 @@ export const DEFAULT_POLICY_PROFILES: Record<UseCaseId, PolicyProfile> = {
     description:
       'High-throughput, customer-facing tier. Strict against toxic language and PII disclosures with low added latency.',
     geography_ruleset: 'EU_AI_ACT_STANDARD',
-    latency_budget_ms: 180,
     pre_response_blocking: true,
     active_lanes: {
       performance: true,
@@ -43,7 +42,6 @@ export const DEFAULT_POLICY_PROFILES: Record<UseCaseId, PolicyProfile> = {
     description:
       'Medium-latency budget. Focused on intellectual property protection, internal executive compensation privacy, and code correctness.',
     geography_ruleset: 'INTERNAL_IP_SECURITY',
-    latency_budget_ms: 250,
     pre_response_blocking: false,
     active_lanes: {
       performance: true,
@@ -74,7 +72,6 @@ export const DEFAULT_POLICY_PROFILES: Record<UseCaseId, PolicyProfile> = {
     description:
       'Highest regulatory scrutiny (FINRA, ECOA, HIPAA). Pre-response blocking enabled for high-risk credit, loan, and insurance triage.',
     geography_ruleset: 'US_HIPAA_FINRA',
-    latency_budget_ms: 400,
     pre_response_blocking: true,
     active_lanes: {
       performance: true,
@@ -111,7 +108,6 @@ description: "${profile.description}"
 geography_ruleset: "${profile.geography_ruleset}"
 
 runtime_governance:
-  latency_budget_ms: ${profile.latency_budget_ms}
   pre_response_blocking: ${profile.pre_response_blocking}
   fail_mode: "${profile.failMode || 'FAIL_OPEN'}"
   timeout_fallback: "${profile.timeout_fallback}"

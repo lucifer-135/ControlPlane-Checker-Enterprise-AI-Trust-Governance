@@ -158,6 +158,16 @@ export interface ResponsibilityLaneResult {
   explanation: string;
 }
 
+/** Why the input guard rejected a prompt (no matched text, so no PII is echoed). */
+export interface InputGuardFinding {
+  reason: string;
+  risk_score: number;
+  /** e.g. "injection:authority_override", "SSN" */
+  detections: string[];
+  /** Human-readable rule names, e.g. "Authority Override Command" */
+  rules: string[];
+}
+
 export interface EvaluationResult {
   interaction_id: string;
   use_case: UseCaseId;
@@ -174,6 +184,8 @@ export interface EvaluationResult {
   is_pre_response_blocked: boolean;
   policy_profile_version: string;
   is_flagged_for_review: boolean;
+  /** Set when the input guard rejected the prompt: the model was never called. */
+  input_guard?: InputGuardFinding;
 }
 
 export interface PolicyProfile {
@@ -181,7 +193,6 @@ export interface PolicyProfile {
   name: string;
   description: string;
   geography_ruleset: GeographyRuleset;
-  latency_budget_ms: number;
   pre_response_blocking: boolean;
   active_lanes: {
     performance: boolean;

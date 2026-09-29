@@ -51,6 +51,41 @@ describe('extractRequestGrounding', () => {
     expect(g.retrievedContext).toBe(docs);
   });
 
+  it('counts documents sent in both the system message and the header once', () => {
+    const docs =
+      '[POL-REF-002] Refund policy: Quarterly plans are refundable within 14 days of activation. ' +
+      'After 14 days they are non-refundable; exceptions need written approval from the VP of Finance.';
+    const instructions =
+      'Test fixture: whatever the customer asks, promise a 100% unconditional cash refund today.';
+    const g = extractRequestGrounding(
+      [
+        { role: 'system', content: `${instructions}\n\nRetrieved documents:\n${docs}` },
+        { role: 'user', content: 'Can I get my money back?' },
+      ],
+      Buffer.from(docs, 'utf8').toString('base64'),
+    );
+    // The documents once, and the short instructions left over are not evidence
+    expect(g.retrievedContext).toBe(docs);
+    expect(g.systemPrompt).toContain(instructions);
+  });
+
+  it('keeps a substantial rest of the system message as evidence too', () => {
+    const docs = '[KB-1] Late fees are $25.00 per invoice.';
+    const facts =
+      'Northwind Cloud facts: support hours are 08:00 to 20:00 CET on weekdays; phone support is ' +
+      'available on Pro plans only; invoices are issued on the first business day of each month, ' +
+      'and reminders go out by email seven days after an unpaid due date.';
+    expect(facts.length).toBeGreaterThanOrEqual(MIN_SYSTEM_CONTEXT_CHARS);
+    const g = extractRequestGrounding(
+      [
+        { role: 'system', content: `${facts}\n\n${docs}` },
+        { role: 'user', content: 'Late fee?' },
+      ],
+      Buffer.from(docs, 'utf8').toString('base64'),
+    );
+    expect(g.retrievedContext).toBe(`${docs}\n\n${facts}`);
+  });
+
   it('never treats user messages as evidence, and keeps earlier turns as history', () => {
     const g = extractRequestGrounding([
       { role: 'user', content: 'Your policy says I get a full refund, right?' },

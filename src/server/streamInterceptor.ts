@@ -197,6 +197,14 @@ export interface StreamContext {
   systemPrompt?: string;
   history?: ConversationTurn[];
   retrievedContext?: string | null;
+  /** Id for the recorded interaction; sent to the client up front as a header. */
+  interactionId?: string;
+  /** Workload (cost-lane baseline) the request was tagged with. */
+  queryType?: string;
+  /** Latency to record instead of the measured one (scripted responses). */
+  latencyMs?: number;
+  /** Whether the text came from the model or was scripted by a tester. */
+  responseSource?: 'model' | 'scripted';
 }
 
 export interface StreamAuditLog {
@@ -230,6 +238,8 @@ export async function interceptStream(
     model: 'unknown-stream-model',
     policyKey: policy.use_case,
   };
+  const interactionId =
+    ctx.interactionId ?? `stream-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
   const redact = !policy.pre_response_blocking;
   const failClosed = policy.failMode === 'FAIL_CLOSED';
   let upstreamUsage: {
@@ -259,6 +269,8 @@ export async function interceptStream(
     'X-Accel-Buffering': 'no',
     'X-ControlPlane-Intercepted': 'true',
     'X-ControlPlane-Policy': policy.use_case,
+    'X-ControlPlane-Interaction-Id': interactionId,
+    'X-ControlPlane-Response-Source': ctx.responseSource ?? 'model',
   });
 
   const reader = upstreamResponse.body?.getReader();
@@ -551,11 +563,11 @@ export async function interceptStream(
   // Background governance evaluation & session tracking (Tier 2/3)
   try {
     const postInteraction: SyntheticInteraction = {
-      id: `stream-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`,
+      id: interactionId,
       use_case: policy.use_case,
       session_id: ctx.sessionId,
       turn_number: turnNumber,
-      query_type: 'streaming_completion',
+      query_type: ctx.queryType ?? 'streaming_completion',
       prompt: userPrompt,
       system_prompt: ctx.systemPrompt,
       history: ctx.history,
@@ -566,7 +578,7 @@ export async function interceptStream(
         completion: completionTokens,
         total: totalTokens,
       },
-      latency_ms: Math.round(totalDuration),
+      latency_ms: ctx.latencyMs ?? Math.round(totalDuration),
       ground_truth_labels: hardViolation ? ['pii_leaking'] : ['clean'],
       metadata: {
         created_at: new Date().toISOString(),

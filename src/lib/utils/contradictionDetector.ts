@@ -177,6 +177,8 @@ const PHRASE_CONTRADICTIONS: {
   responsePhrase: RegExp;
   /** The pair does not apply when the context itself contains this (e.g. it already excludes cases). */
   contextException?: RegExp;
+  /** The pair does not apply when the response itself contains this (e.g. it states the condition). */
+  responseException?: RegExp;
   reason: string;
 }[] = [
   {
@@ -193,6 +195,8 @@ const PHRASE_CONTRADICTIONS: {
   {
     contextPhrase: /non[- ]?refundable/i,
     responsePhrase: /(?:full|100%|unconditional|guaranteed)\s+(?:cash\s+)?refund/i,
+    // "a full refund if you cancel within 14 days" restates the policy's condition
+    responseException: /\bwithin\s+(?:the\s+first\s+)?\d+\s+(?:business\s+)?days?\b/i,
     reason: 'Context states non-refundable but response promises a full/unconditional refund.',
   },
   {
@@ -274,7 +278,8 @@ export function detectContradictions(
     if (
       pc.contextPhrase.test(contextLower) &&
       pc.responsePhrase.test(responseLower) &&
-      !pc.contextException?.test(contextLower)
+      !pc.contextException?.test(contextLower) &&
+      !pc.responseException?.test(responseLower)
     ) {
       const contextMatch = contextLower.match(pc.contextPhrase);
       const responseMatch = responseLower.match(pc.responsePhrase);

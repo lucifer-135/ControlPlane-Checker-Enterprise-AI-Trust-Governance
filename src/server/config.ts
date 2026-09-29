@@ -16,7 +16,7 @@
 
 export type AuthMode = 'required' | 'dev';
 
-export const DEMO_API_KEY = 'cp_live_default_admin_key_2026';
+export { DEMO_API_KEY } from '../lib/demoKey.js';
 
 export function isProduction(): boolean {
   return process.env.NODE_ENV === 'production';

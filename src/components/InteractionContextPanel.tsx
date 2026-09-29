@@ -195,7 +195,7 @@ export const InteractionContextPanel: React.FC<InteractionContextPanelProps> = (
             })}
           </div>
         ) : (
-          <p className="text-xs text-[#344054] leading-relaxed italic bg-white/90 p-3 rounded-lg border border-slate-200 font-sans">
+          <p className="text-xs text-[#344054] leading-relaxed italic bg-white/90 p-3 rounded-lg border border-slate-200 font-sans whitespace-pre-wrap">
             {item.retrieved_context ||
               '[No retrieval context attached. Evaluated against certainty heuristic.]'}
           </p>

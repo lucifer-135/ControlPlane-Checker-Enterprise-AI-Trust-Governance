@@ -54,6 +54,11 @@ export function needsAccuracyDisclaimer(evaluation: EvaluationResult): boolean {
   );
 }
 
+/** The error message an app receives (HTTP 400) when the input guard rejects its prompt. */
+export function inputGuardErrorMessage(reason: string): string {
+  return `Request blocked by input guard: ${reason}`;
+}
+
 /** What a pre-blocked user receives instead of the model's answer. */
 export const WITHHELD_RESPONSE =
   "I'm unable to provide this response as it has been flagged by our governance system. A human reviewer has been notified.";
@@ -89,6 +94,8 @@ export interface UserVisibleResponse {
   /** The disclaimer shown under the body, if any (plain text). */
   disclaimer: string | null;
   withheld: boolean;
+  /** The prompt was rejected before the model: the app received an HTTP 400 error. */
+  rejected: boolean;
   /** True when the user sees something other than the model's original answer. */
   changed: boolean;
 }
@@ -98,6 +105,17 @@ export function userVisibleResponse(
   evaluation: EvaluationResult,
   originalResponse: string,
 ): UserVisibleResponse {
+  if (evaluation.input_guard) {
+    const error = inputGuardErrorMessage(evaluation.input_guard.reason);
+    return {
+      text: error,
+      body: error,
+      disclaimer: null,
+      withheld: true,
+      rejected: true,
+      changed: true,
+    };
+  }
   const treatment = deliveryTreatment(evaluation);
   if (treatment.withheld) {
     return {
@@ -105,6 +123,7 @@ export function userVisibleResponse(
       body: WITHHELD_RESPONSE,
       disclaimer: null,
       withheld: true,
+      rejected: false,
       changed: true,
     };
   }
@@ -118,6 +137,7 @@ export function userVisibleResponse(
     body,
     disclaimer: note ? plainNote(note) : null,
     withheld: false,
+    rejected: false,
     changed: note !== null || treatment.redactedTypes.length > 0,
   };
 }

@@ -11,8 +11,9 @@
  * 2. Review Queue (BLOCK_ESCALATE verdicts are also persisted to SQLite)
  *
  * Guarantees:
- * - Payload minimization: prompts/responses are PII-redacted and truncated
- *   before they enter the buffer (CONTROLPLANE_EVENT_PAYLOADS=redacted|none|full).
+ * - Payload minimization: prompts, responses, system prompts, history and
+ *   retrieved documents are PII-redacted and truncated before they enter the
+ *   buffer (CONTROLPLANE_EVENT_PAYLOADS=redacted|none|full).
  * - Tenant isolation: every read and every SSE subscription is filtered by the
  *   caller's org/workspace.
  * - Retention: events expire after CONTROLPLANE_EVENT_TTL_MS, with a per-org cap
@@ -147,11 +148,27 @@ export function minimizeGatewayEvent(
   const responsibility = evaluation.responsibility;
   const placeholderFor = piiPlaceholders(responsibility);
 
+  const redactText = (text: string | undefined) =>
+    text ? truncate(evaluateResponsibilityLane(text).redacted_response) : '';
+
   let prompt = '';
   let response = '';
+  let systemPrompt: string | undefined;
+  let history: typeof interaction.history;
+  let retrievedContext: string | null = null;
+  let contextChunks: typeof interaction.context_chunks;
   if (mode === 'redacted') {
-    prompt = truncate(evaluateResponsibilityLane(interaction.prompt || '').redacted_response);
+    prompt = redactText(interaction.prompt);
     response = truncate(responsibility.redacted_response || '');
+    // App-supplied system prompts, earlier turns and retrieved documents can hold PII
+    // (customer records) too
+    systemPrompt = interaction.system_prompt ? redactText(interaction.system_prompt) : undefined;
+    history = interaction.history?.map((t) => ({ ...t, content: redactText(t.content) }));
+    // The evidence the answer was checked against, shown next to its evaluation
+    retrievedContext = interaction.retrieved_context
+      ? redactText(interaction.retrieved_context)
+      : null;
+    contextChunks = interaction.context_chunks?.map((c) => ({ ...c, text: redactText(c.text) }));
   }
 
   return {
@@ -160,7 +177,10 @@ export function minimizeGatewayEvent(
       ...interaction,
       prompt,
       response,
-      retrieved_context: null,
+      system_prompt: systemPrompt,
+      history,
+      retrieved_context: retrievedContext,
+      context_chunks: contextChunks,
     },
     evaluation: {
       ...evaluation,

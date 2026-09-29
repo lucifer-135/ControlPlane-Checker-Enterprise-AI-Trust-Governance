@@ -29,7 +29,6 @@ describe('PolicyLoader', () => {
         jurisdiction: 'EU_AI_ACT_STANDARD',
         enactment: {
           default_mode: 'FAIL_CLOSED',
-          max_pipeline_latency_budget_ms: 220,
         },
         lanes: {
           performance: { min_groundedness: 0.75 },
@@ -56,7 +55,6 @@ describe('PolicyLoader', () => {
     expect(profile?.version).toBe('3.0.0');
     expect(profile?.failMode).toBe('FAIL_CLOSED');
     expect(profile?.pre_response_blocking).toBe(true);
-    expect(profile?.latency_budget_ms).toBe(220);
     expect(profile?.lane_weights.performance).toBe(0.5);
     expect(profile?.thresholds.block_escalate).toBe(0.65);
   });
@@ -67,7 +65,6 @@ describe('PolicyLoader', () => {
       name: 'Internal Dev Profile',
       version: '1.2.0',
       geography_ruleset: 'INTERNAL_IP_SECURITY',
-      latency_budget_ms: 300,
       pre_response_blocking: false,
       active_lanes: { performance: true, cost: true, responsibility: true },
       lane_weights: { performance: 0.4, cost: 0.3, responsibility: 0.3 },

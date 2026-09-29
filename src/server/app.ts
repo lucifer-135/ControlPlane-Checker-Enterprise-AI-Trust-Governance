@@ -144,9 +144,6 @@ function validatePolicyProfile(profile: PolicyProfile): string | null {
     if (!isFiniteNumber(value) || value < 0)
       return `lane_weights.${key} must be a non-negative number`;
   }
-  if (!isFiniteNumber(profile.latency_budget_ms) || profile.latency_budget_ms <= 0) {
-    return 'latency_budget_ms must be a positive number';
-  }
   if (profile.failMode && !['FAIL_OPEN', 'FAIL_CLOSED'].includes(profile.failMode)) {
     return 'failMode must be FAIL_OPEN or FAIL_CLOSED';
   }
@@ -295,7 +292,8 @@ export function createApp(options: CreateAppOptions = {}): CreatedApp {
   // ──────────────────────────────────────────────────────────────────────
 
   // POST /v1/chat/completions - Drop-in proxy intercepting streaming & non-streaming completions.
-  // Any active API key may call the proxy; a key's bound policy profile wins over headers.
+  // Any active API key may call the proxy; a key's bound policy profile wins over headers,
+  // except for admin keys and local development, which may pick one with X-Policy-Profile.
   app.post('/v1/chat/completions', auth, (req, res) => {
     handleChatCompletions(req as AuthenticatedRequest, res, serverPolicyProfiles);
   });

@@ -552,7 +552,7 @@ export const PolicyProfilesTab: React.FC<PolicyProfilesTabProps> = ({
                     Pre-Response Blocking
                   </span>
                   <span className="text-[11px] text-[#667085]">
-                    Wait for lane check before streaming
+                    Withhold flagged answers instead of delivering them for later review
                   </span>
                 </div>
                 <label className="relative inline-flex items-center gap-2.5 cursor-pointer select-none group">
@@ -578,30 +578,6 @@ export const PolicyProfilesTab: React.FC<PolicyProfilesTabProps> = ({
                     {currentProfile.pre_response_blocking ? 'ON' : 'OFF'}
                   </span>
                 </label>
-              </div>
-
-              {/* Latency Budget */}
-              <div className="space-y-2 pt-2">
-                <div className="flex justify-between items-center">
-                  <span className="text-[13px] text-[#344054] font-medium">Latency target</span>
-                  <span className="font-mono text-xs tnum text-[#101828] bg-white border border-slate-300 rounded-lg px-2 py-0.5 font-bold shadow-xs">
-                    {currentProfile.latency_budget_ms} ms
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min="100"
-                  max="800"
-                  step="25"
-                  value={currentProfile.latency_budget_ms}
-                  onChange={(e) =>
-                    onUpdateProfile(activeUseCase, {
-                      ...currentProfile,
-                      latency_budget_ms: parseInt(e.target.value, 10),
-                    })
-                  }
-                  className="w-full h-2.5 bg-slate-300 hover:bg-slate-400/70 border border-slate-400 rounded-full cursor-pointer shadow-inner accent-[#4F46E5] transition-colors"
-                />
               </div>
             </div>
 

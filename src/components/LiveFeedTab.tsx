@@ -36,10 +36,12 @@ import {
   Cpu,
   Scale,
   ShieldAlert,
+  Radio,
 } from 'lucide-react';
 import type { JudgeProvider } from '../types';
 import { InteractionContextPanel } from './InteractionContextPanel';
 import { displayClaimSpans } from '../lib/findings';
+import { SCRIPTED_MODEL_NAME } from '../lib/gatewayScenarios';
 import { UserVisibleResponsePanel } from './UserVisibleResponse';
 import { deliveryTreatment, piiTypeLabel } from '../lib/deliveryTreatment';
 import { averageOverheadMs, useCaseStreamStats, USE_CASE_LABELS } from '../lib/metrics';
@@ -64,6 +66,11 @@ interface LiveFeedTabProps {
   interactions: SyntheticInteraction[];
   /** Real gateway traffic; always visible regardless of replay position. */
   liveInteractions?: SyntheticInteraction[];
+  /** Opens the Gateway Playground (real requests through /v1/chat/completions). */
+  onOpenGatewayPlayground?: () => void;
+  /** Interaction to open and scroll to once it is in the feed (e.g. from the playground). */
+  focusInteractionId?: string | null;
+  onFocusHandled?: () => void;
   evaluations: Record<string, EvaluationResult>;
   onRunJudge: (interaction: SyntheticInteraction, provider?: JudgeProvider) => Promise<any>;
   activeUseCaseFilter: UseCaseId | 'ALL';
@@ -78,6 +85,9 @@ interface LiveFeedTabProps {
 export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
   interactions,
   liveInteractions = [],
+  onOpenGatewayPlayground,
+  focusInteractionId,
+  onFocusHandled,
   evaluations,
   onRunJudge,
   activeUseCaseFilter,
@@ -109,6 +119,13 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
   const [anomalyFilter, setAnomalyFilter] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  // Card briefly ringed after a jump to it, so the eye lands on it
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!highlightedId) return;
+    const timer = setTimeout(() => setHighlightedId(null), 2500);
+    return () => clearTimeout(timer);
+  }, [highlightedId]);
 
   // Judge loading state
   const [evaluatingJudgeId, setEvaluatingJudgeId] = useState<string | null>(null);
@@ -179,6 +196,32 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
     () => [...interactions.slice(0, streamIndex), ...liveInteractions],
     [interactions, streamIndex, liveInteractions],
   );
+
+  // Live gateway traffic is unlabelled; the "Truth" pill only applies to the dataset
+  const liveIds = useMemo(() => new Set(liveInteractions.map((i) => i.id)), [liveInteractions]);
+
+  // Open the requested card once its live event has arrived, clearing any filter that
+  // would hide it
+  useEffect(() => {
+    if (!focusInteractionId || !liveIds.has(focusInteractionId)) return;
+    setVerdictFilter('ALL');
+    setAnomalyFilter('ALL');
+    setSearchQuery('');
+    setActiveUseCaseFilter('ALL');
+    setExpandedId(focusInteractionId);
+    // Scroll once the expanded card has rendered; only then mark the focus as handled
+    // (clearing it earlier would re-run this effect and cancel the scroll)
+    const timer = setTimeout(() => {
+      // An instant jump: the card can be thousands of pixels down the feed
+      document
+        .getElementById(`interaction-${focusInteractionId}`)
+        ?.scrollIntoView({ block: 'start' });
+      setHighlightedId(focusInteractionId);
+      onFocusHandled?.();
+    }, 150);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusInteractionId, liveIds]);
 
   // Live events that arrived since the operator last acknowledged the feed
   const [seenLiveIds, setSeenLiveIds] = useState<Set<string>>(
@@ -511,6 +554,18 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
                 All
               </button>
             </div>
+
+            {onOpenGatewayPlayground && (
+              <button
+                id="btn-gateway-playground"
+                onClick={onOpenGatewayPlayground}
+                className="flex items-center space-x-1.5 px-3.5 py-2 rounded-xl text-xs font-medium border border-[#ABEFC6] bg-[#ECFDF3]/90 text-[#067647] hover:bg-[#DCFAE6] transition-all cursor-pointer shadow-xs"
+                title="Send a real OpenAI-compatible request through the gateway"
+              >
+                <Radio className="h-3.5 w-3.5" />
+                <span>Gateway Playground</span>
+              </button>
+            )}
           </div>
 
           {/* Quick Search */}
@@ -736,7 +791,11 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
               <div
                 key={item.id}
                 id={`interaction-${item.id}`}
-                className={`glass-panel rounded-2xl overflow-hidden transition-all ${
+                className={`glass-panel rounded-2xl overflow-hidden transition-all scroll-mt-24 ${
+                  highlightedId === item.id
+                    ? 'outline-4 outline-solid outline-[#4F46E5]/50 outline-offset-2 '
+                    : ''
+                }${
                   isExpanded
                     ? 'border-[#4F46E5] ring-2 ring-[#EEF0FE] shadow-lg'
                     : evalRes.verdict === 'BLOCK_ESCALATE'
@@ -778,10 +837,27 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
                         </span>
                       )}
 
-                      {/* Ground Truth Pill */}
-                      <span className="text-[10px] text-[#667085] glass-inset px-2 py-0.5 rounded-lg font-medium">
-                        Truth: {item.ground_truth_labels.join(', ')}
-                      </span>
+                      {/* Ground Truth Pill (dataset) or Live tag (gateway traffic) */}
+                      {liveIds.has(item.id) ? (
+                        item.metadata.model_name === SCRIPTED_MODEL_NAME ? (
+                          <span
+                            className="inline-flex items-center gap-1 text-[10px] text-[#4F46E5] bg-[#EEF0FE]/90 border border-[#D9D6FE] px-2 py-0.5 rounded-lg font-semibold"
+                            title="Sent through the gateway with a scripted answer; no model was called"
+                          >
+                            <span className="w-1.5 h-1.5 rounded-full bg-[#4F46E5]" />
+                            Gateway · Scripted
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-[10px] text-[#067647] bg-[#ECFDF3]/90 border border-[#ABEFC6] px-2 py-0.5 rounded-lg font-semibold">
+                            <span className="w-1.5 h-1.5 rounded-full bg-[#12B76A]" />
+                            Live · Gateway
+                          </span>
+                        )
+                      ) : (
+                        <span className="text-[10px] text-[#667085] glass-inset px-2 py-0.5 rounded-lg font-medium">
+                          Truth: {item.ground_truth_labels.join(', ')}
+                        </span>
+                      )}
                     </div>
 
                     {/* Prompt Title */}
@@ -792,63 +868,77 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
 
                   {/* Right: Three Lane Metric Chips & Verdict Badge */}
                   <div className="flex items-center flex-wrap md:flex-nowrap gap-2">
-                    {/* Performance Lane Chip */}
-                    <div
-                      className={`px-2.5 py-1 rounded-xl text-xs border flex items-center space-x-1.5 font-medium shadow-xs backdrop-blur-md ${
-                        evalRes.performance.is_confidently_wrong
-                          ? 'bg-[#FEF3F2]/90 border-[#FECDCA] text-[#B42318]'
-                          : 'bg-[#EFF6FF]/90 border-[#B2DDFF] text-[#175CD3]'
-                      }`}
-                      title={`Performance Lane: Groundedness ${(evalRes.performance.groundedness_score * 100).toFixed(0)}%`}
-                    >
-                      <Zap
-                        className={`h-3 w-3 ${evalRes.performance.is_confidently_wrong ? 'text-[#F04438]' : 'text-[#2E90FA]'}`}
-                      />
-                      <span className="font-mono tnum">
-                        {(evalRes.performance.groundedness_score * 100).toFixed(0)}%
-                      </span>
-                      {evalRes.performance.is_confidently_wrong && (
-                        <span className="text-[9px] bg-white text-[#B42318] border border-[#FECDCA] px-1 rounded-md font-semibold">
-                          CW
+                    {evalRes.input_guard ? (
+                      <div
+                        className="px-2.5 py-1 rounded-xl text-xs border flex items-center space-x-1.5 font-medium shadow-xs bg-[#FEF3F2]/90 border-[#FECDCA] text-[#B42318]"
+                        title={evalRes.input_guard.reason}
+                      >
+                        <ShieldAlert className="h-3 w-3 text-[#F04438]" />
+                        <span>
+                          Blocked at input · {evalRes.input_guard.rules[0] ?? 'Input guard'}
                         </span>
-                      )}
-                    </div>
+                      </div>
+                    ) : (
+                      <>
+                        {/* Performance Lane Chip */}
+                        <div
+                          className={`px-2.5 py-1 rounded-xl text-xs border flex items-center space-x-1.5 font-medium shadow-xs backdrop-blur-md ${
+                            evalRes.performance.is_confidently_wrong
+                              ? 'bg-[#FEF3F2]/90 border-[#FECDCA] text-[#B42318]'
+                              : 'bg-[#EFF6FF]/90 border-[#B2DDFF] text-[#175CD3]'
+                          }`}
+                          title={`Performance Lane: Groundedness ${(evalRes.performance.groundedness_score * 100).toFixed(0)}%`}
+                        >
+                          <Zap
+                            className={`h-3 w-3 ${evalRes.performance.is_confidently_wrong ? 'text-[#F04438]' : 'text-[#2E90FA]'}`}
+                          />
+                          <span className="font-mono tnum">
+                            {(evalRes.performance.groundedness_score * 100).toFixed(0)}%
+                          </span>
+                          {evalRes.performance.is_confidently_wrong && (
+                            <span className="text-[9px] bg-white text-[#B42318] border border-[#FECDCA] px-1 rounded-md font-semibold">
+                              CW
+                            </span>
+                          )}
+                        </div>
 
-                    {/* Cost Lane Chip */}
-                    <div
-                      className={`px-2.5 py-1 rounded-xl text-xs border flex items-center space-x-1.5 font-medium shadow-xs backdrop-blur-md ${
-                        evalRes.cost.is_outlier
-                          ? 'bg-[#FFFAEB]/90 border-[#FEDF89] text-[#B54708]'
-                          : 'glass-inset text-[#475467]'
-                      }`}
-                      title={`Cost Lane: Token Z-Score ${evalRes.cost.token_z_score}`}
-                    >
-                      <Coins
-                        className={`h-3 w-3 ${evalRes.cost.is_outlier ? 'text-[#DC6803]' : 'text-[#98A2B3]'}`}
-                      />
-                      <span className="font-mono tnum">{item.token_count.total}t</span>
-                    </div>
+                        {/* Cost Lane Chip */}
+                        <div
+                          className={`px-2.5 py-1 rounded-xl text-xs border flex items-center space-x-1.5 font-medium shadow-xs backdrop-blur-md ${
+                            evalRes.cost.is_outlier
+                              ? 'bg-[#FFFAEB]/90 border-[#FEDF89] text-[#B54708]'
+                              : 'glass-inset text-[#475467]'
+                          }`}
+                          title={`Cost Lane: Token Z-Score ${evalRes.cost.token_z_score}`}
+                        >
+                          <Coins
+                            className={`h-3 w-3 ${evalRes.cost.is_outlier ? 'text-[#DC6803]' : 'text-[#98A2B3]'}`}
+                          />
+                          <span className="font-mono tnum">{item.token_count.total}t</span>
+                        </div>
 
-                    {/* Responsibility Lane Chip */}
-                    <div
-                      className={`px-2.5 py-1 rounded-xl text-xs border flex items-center space-x-1.5 font-medium shadow-xs backdrop-blur-md ${
-                        evalRes.responsibility.risk_score > 0.4
-                          ? 'bg-[#F4F3FF]/90 border-[#D9D6FE] text-[#6941C6]'
-                          : 'glass-inset text-[#475467]'
-                      }`}
-                      title={`Responsibility Lane: ${evalRes.responsibility.pii_detected.length} PII detected`}
-                    >
-                      <Shield
-                        className={`h-3 w-3 ${evalRes.responsibility.risk_score > 0.4 ? 'text-[#7A5AF8]' : 'text-[#98A2B3]'}`}
-                      />
-                      <span>
-                        {evalRes.responsibility.pii_detected.length > 0
-                          ? `PII (${evalRes.responsibility.pii_detected.length})`
-                          : evalRes.responsibility.bias_flags.length > 0
-                            ? 'Bias'
-                            : 'Clean'}
-                      </span>
-                    </div>
+                        {/* Responsibility Lane Chip */}
+                        <div
+                          className={`px-2.5 py-1 rounded-xl text-xs border flex items-center space-x-1.5 font-medium shadow-xs backdrop-blur-md ${
+                            evalRes.responsibility.risk_score > 0.4
+                              ? 'bg-[#F4F3FF]/90 border-[#D9D6FE] text-[#6941C6]'
+                              : 'glass-inset text-[#475467]'
+                          }`}
+                          title={`Responsibility Lane: ${evalRes.responsibility.pii_detected.length} PII detected`}
+                        >
+                          <Shield
+                            className={`h-3 w-3 ${evalRes.responsibility.risk_score > 0.4 ? 'text-[#7A5AF8]' : 'text-[#98A2B3]'}`}
+                          />
+                          <span>
+                            {evalRes.responsibility.pii_detected.length > 0
+                              ? `PII (${evalRes.responsibility.pii_detected.length})`
+                              : evalRes.responsibility.bias_flags.length > 0
+                                ? 'Bias'
+                                : 'Clean'}
+                          </span>
+                        </div>
+                      </>
+                    )}
 
                     {/* Overhead */}
                     <div className="text-xs text-[#667085] font-mono tnum hidden xl:block">
@@ -917,7 +1007,11 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
                           <div className="flex justify-between items-center mb-2 gap-2">
                             <span className="text-[11px] text-[#667085] font-medium flex items-center gap-2">
                               AI model response
-                              {evalRes.is_pre_response_blocked ? (
+                              {evalRes.input_guard ? (
+                                <span className="text-[10px] font-semibold text-[#B42318] bg-[#FEF3F2] px-2 py-0.5 rounded-lg border border-[#FECDCA] whitespace-nowrap">
+                                  Model not called (Input Guard)
+                                </span>
+                              ) : evalRes.is_pre_response_blocked ? (
                                 <span className="text-[10px] font-semibold text-[#B42318] bg-[#FEF3F2] px-2 py-0.5 rounded-lg border border-[#FECDCA] whitespace-nowrap">
                                   Withheld from user (Pre-Response Block)
                                 </span>
@@ -932,7 +1026,17 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
                             </span>
                           </div>
 
-                          {evalRes.is_pre_response_blocked ? (
+                          {evalRes.input_guard ? (
+                            <div className="mb-2.5 p-2.5 rounded-xl bg-[#FEF3F2] border border-[#FECDCA] text-[11px] text-[#B42318] flex items-center gap-2">
+                              <ShieldAlert className="h-4 w-4 shrink-0 text-[#D92D20]" />
+                              <span>
+                                <strong>Blocked before the model:</strong>{' '}
+                                {evalRes.input_guard.reason} (risk{' '}
+                                {evalRes.input_guard.risk_score.toFixed(2)}). The prompt never
+                                reached the model; the app received an HTTP 400 error.
+                              </span>
+                            </div>
+                          ) : evalRes.is_pre_response_blocked ? (
                             <div className="mb-2.5 p-2.5 rounded-xl bg-[#FEF3F2] border border-[#FECDCA] text-[11px] text-[#B42318] flex items-center gap-2">
                               <ShieldAlert className="h-4 w-4 shrink-0 text-[#D92D20]" />
                               <span>
@@ -952,7 +1056,14 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
                           ) : null}
 
                           <div className="bg-white/90 border border-slate-200 rounded-xl p-4 min-h-[100px] shadow-inner">
-                            {renderHighlightedResponse(item.response, evalRes)}
+                            {evalRes.input_guard ? (
+                              <span className="italic text-xs text-[#667085]">
+                                No model response: the input guard stopped the request before the
+                                model was called.
+                              </span>
+                            ) : (
+                              renderHighlightedResponse(item.response, evalRes)
+                            )}
                           </div>
 
                           <UserVisibleResponsePanel
@@ -996,117 +1107,123 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
                       </div>
                     </div>
 
-                    {/* Three Detailed Lane Deep Dives */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      {/* Lane 1 - Performance */}
-                      <div className="glass-panel rounded-xl p-4 space-y-3 shadow-xs">
-                        <div className="flex items-center justify-between text-xs font-semibold text-[#175CD3]">
-                          <span className="flex items-center gap-1.5">
-                            <Zap className="h-3.5 w-3.5 text-[#2E90FA]" /> Performance lane
-                          </span>
-                          <span className="font-mono tnum">
-                            {(evalRes.performance.groundedness_score * 100).toFixed(0)}%
-                          </span>
+                    {/* Three Detailed Lane Deep Dives (none when the model was never called) */}
+                    {!evalRes.input_guard && (
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {/* Lane 1 - Performance */}
+                        <div className="glass-panel rounded-xl p-4 space-y-3 shadow-xs">
+                          <div className="flex items-center justify-between text-xs font-semibold text-[#175CD3]">
+                            <span className="flex items-center gap-1.5">
+                              <Zap className="h-3.5 w-3.5 text-[#2E90FA]" /> Performance lane
+                            </span>
+                            <span className="font-mono tnum">
+                              {(evalRes.performance.groundedness_score * 100).toFixed(0)}%
+                            </span>
+                          </div>
+                          <div className="text-xs text-[#475467] space-y-1">
+                            <div className="flex justify-between gap-2">
+                              <span className="text-[#667085]">Groundedness</span>
+                              <span className="text-[#101828] font-mono font-medium tnum">
+                                {evalRes.performance.groundedness_score}
+                              </span>
+                            </div>
+                            <div className="flex justify-between gap-2">
+                              <span className="text-[#667085]">Certainty</span>
+                              <span className="text-[#101828] font-mono font-medium tnum">
+                                {evalRes.performance.certainty_score}
+                              </span>
+                            </div>
+                            <div className="flex justify-between gap-2">
+                              <span className="text-[#667085]">Mismatch</span>
+                              <span className="text-[#B42318] font-mono font-semibold tnum">
+                                {evalRes.performance.certainty_support_mismatch}
+                              </span>
+                            </div>
+                          </div>
+                          <p className="text-xs text-[#667085] pt-2 border-t border-slate-200 font-sans leading-relaxed">
+                            {evalRes.performance.explanation}
+                          </p>
                         </div>
-                        <div className="text-xs text-[#475467] space-y-1">
-                          <div className="flex justify-between gap-2">
-                            <span className="text-[#667085]">Groundedness</span>
-                            <span className="text-[#101828] font-mono font-medium tnum">
-                              {evalRes.performance.groundedness_score}
-                            </span>
-                          </div>
-                          <div className="flex justify-between gap-2">
-                            <span className="text-[#667085]">Certainty</span>
-                            <span className="text-[#101828] font-mono font-medium tnum">
-                              {evalRes.performance.certainty_score}
-                            </span>
-                          </div>
-                          <div className="flex justify-between gap-2">
-                            <span className="text-[#667085]">Mismatch</span>
-                            <span className="text-[#B42318] font-mono font-semibold tnum">
-                              {evalRes.performance.certainty_support_mismatch}
-                            </span>
-                          </div>
-                        </div>
-                        <p className="text-xs text-[#667085] pt-2 border-t border-slate-200 font-sans leading-relaxed">
-                          {evalRes.performance.explanation}
-                        </p>
-                      </div>
 
-                      {/* Lane 2 - Cost */}
-                      <div className="glass-panel rounded-xl p-4 space-y-3 shadow-xs">
-                        <div className="flex items-center justify-between text-xs font-semibold text-[#B54708]">
-                          <span className="flex items-center gap-1.5">
-                            <Coins className="h-3.5 w-3.5 text-[#DC6803]" /> Cost lane
-                          </span>
-                          <span className="font-mono tnum">Z: {evalRes.cost.combined_z_score}</span>
+                        {/* Lane 2 - Cost */}
+                        <div className="glass-panel rounded-xl p-4 space-y-3 shadow-xs">
+                          <div className="flex items-center justify-between text-xs font-semibold text-[#B54708]">
+                            <span className="flex items-center gap-1.5">
+                              <Coins className="h-3.5 w-3.5 text-[#DC6803]" /> Cost lane
+                            </span>
+                            <span className="font-mono tnum">
+                              Z: {evalRes.cost.combined_z_score}
+                            </span>
+                          </div>
+                          <div className="text-xs text-[#475467] space-y-1">
+                            <div className="flex justify-between gap-2">
+                              <span className="text-[#667085]">Baseline tokens</span>
+                              <span className="text-[#101828] font-mono font-medium tnum">
+                                {evalRes.cost.baseline_mean_tokens}t
+                              </span>
+                            </div>
+                            <div className="flex justify-between gap-2">
+                              <span className="text-[#667085]">Actual tokens</span>
+                              <span className="text-[#101828] font-mono font-medium tnum">
+                                {item.token_count.total}t
+                              </span>
+                            </div>
+                            <div className="flex justify-between gap-2">
+                              <span className="text-[#667085]">Baseline latency</span>
+                              <span className="text-[#101828] font-mono font-medium tnum">
+                                {evalRes.cost.baseline_mean_latency_ms}ms
+                              </span>
+                            </div>
+                          </div>
+                          <p className="text-xs text-[#667085] pt-2 border-t border-slate-200 font-sans leading-relaxed">
+                            {evalRes.cost.explanation}
+                          </p>
                         </div>
-                        <div className="text-xs text-[#475467] space-y-1">
-                          <div className="flex justify-between gap-2">
-                            <span className="text-[#667085]">Baseline tokens</span>
-                            <span className="text-[#101828] font-mono font-medium tnum">
-                              {evalRes.cost.baseline_mean_tokens}t
-                            </span>
-                          </div>
-                          <div className="flex justify-between gap-2">
-                            <span className="text-[#667085]">Actual tokens</span>
-                            <span className="text-[#101828] font-mono font-medium tnum">
-                              {item.token_count.total}t
-                            </span>
-                          </div>
-                          <div className="flex justify-between gap-2">
-                            <span className="text-[#667085]">Baseline latency</span>
-                            <span className="text-[#101828] font-mono font-medium tnum">
-                              {evalRes.cost.baseline_mean_latency_ms}ms
-                            </span>
-                          </div>
-                        </div>
-                        <p className="text-xs text-[#667085] pt-2 border-t border-slate-200 font-sans leading-relaxed">
-                          {evalRes.cost.explanation}
-                        </p>
-                      </div>
 
-                      {/* Lane 3 - Responsibility */}
-                      <div className="glass-panel rounded-xl p-4 space-y-3 shadow-xs">
-                        <div className="flex items-center justify-between text-xs font-semibold text-[#6941C6]">
-                          <span className="flex items-center gap-1.5">
-                            <Shield className="h-3.5 w-3.5 text-[#7A5AF8]" /> Responsibility
-                          </span>
-                          <span className="font-mono tnum">
-                            Risk: {evalRes.responsibility.risk_score}
-                          </span>
+                        {/* Lane 3 - Responsibility */}
+                        <div className="glass-panel rounded-xl p-4 space-y-3 shadow-xs">
+                          <div className="flex items-center justify-between text-xs font-semibold text-[#6941C6]">
+                            <span className="flex items-center gap-1.5">
+                              <Shield className="h-3.5 w-3.5 text-[#7A5AF8]" /> Responsibility
+                            </span>
+                            <span className="font-mono tnum">
+                              Risk: {evalRes.responsibility.risk_score}
+                            </span>
+                          </div>
+                          <div className="text-xs text-[#475467] space-y-1">
+                            <div className="flex justify-between gap-2">
+                              <span className="text-[#667085]">PII entities</span>
+                              <span className="text-[#B54708] font-medium text-right">
+                                {evalRes.responsibility.pii_detected.length > 0
+                                  ? evalRes.responsibility.pii_detected
+                                      .map((p) => p.type)
+                                      .join(', ')
+                                  : 'None'}
+                              </span>
+                            </div>
+                            <div className="flex justify-between gap-2">
+                              <span className="text-[#667085]">Bias categories</span>
+                              <span className="text-[#6941C6] font-medium text-right">
+                                {evalRes.responsibility.bias_flags.length > 0
+                                  ? evalRes.responsibility.bias_flags[0]
+                                  : 'None'}
+                              </span>
+                            </div>
+                            <div className="flex justify-between gap-2">
+                              <span className="text-[#667085]">Regulatory</span>
+                              <span className="text-[#067647] font-medium">
+                                {evalRes.responsibility.policy_violations.length > 0
+                                  ? 'Violated'
+                                  : 'Passed'}
+                              </span>
+                            </div>
+                          </div>
+                          <p className="text-xs text-[#667085] pt-2 border-t border-slate-200 font-sans leading-relaxed">
+                            {evalRes.responsibility.explanation}
+                          </p>
                         </div>
-                        <div className="text-xs text-[#475467] space-y-1">
-                          <div className="flex justify-between gap-2">
-                            <span className="text-[#667085]">PII entities</span>
-                            <span className="text-[#B54708] font-medium text-right">
-                              {evalRes.responsibility.pii_detected.length > 0
-                                ? evalRes.responsibility.pii_detected.map((p) => p.type).join(', ')
-                                : 'None'}
-                            </span>
-                          </div>
-                          <div className="flex justify-between gap-2">
-                            <span className="text-[#667085]">Bias categories</span>
-                            <span className="text-[#6941C6] font-medium text-right">
-                              {evalRes.responsibility.bias_flags.length > 0
-                                ? evalRes.responsibility.bias_flags[0]
-                                : 'None'}
-                            </span>
-                          </div>
-                          <div className="flex justify-between gap-2">
-                            <span className="text-[#667085]">Regulatory</span>
-                            <span className="text-[#067647] font-medium">
-                              {evalRes.responsibility.policy_violations.length > 0
-                                ? 'Violated'
-                                : 'Passed'}
-                            </span>
-                          </div>
-                        </div>
-                        <p className="text-xs text-[#667085] pt-2 border-t border-slate-200 font-sans leading-relaxed">
-                          {evalRes.responsibility.explanation}
-                        </p>
                       </div>
-                    </div>
+                    )}
 
                     {/* Session Accumulator & Gemini Judge Action */}
                     <div className="flex flex-wrap items-center justify-between gap-4 glass-panel rounded-xl p-4 shadow-xs">

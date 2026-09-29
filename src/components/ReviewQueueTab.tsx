@@ -541,6 +541,13 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
                         Specific triggering findings across governance lanes
                       </div>
                       <ul className="list-disc list-inside text-[#344054] space-y-1 text-xs font-sans">
+                        {evalRes.input_guard && (
+                          <li>
+                            <span className="font-semibold text-[#B42318]">Input guard:</span>{' '}
+                            {evalRes.input_guard.reason}. The prompt was rejected before reaching
+                            the model (risk {evalRes.input_guard.risk_score.toFixed(2)}).
+                          </li>
+                        )}
                         {evalRes.performance.is_confidently_wrong && (
                           <li>
                             <span className="font-semibold text-[#175CD3]">Performance:</span>{' '}
@@ -593,7 +600,11 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
                             <span className="text-[11px] text-[#667085] font-medium">
                               AI model response
                             </span>
-                            {evalRes.is_pre_response_blocked ? (
+                            {evalRes.input_guard ? (
+                              <span className="inline-flex items-center text-[10px] text-[#B42318] font-semibold bg-[#FEF3F2] px-2 py-0.5 rounded-md border border-[#FECDCA]">
+                                Blocked at input
+                              </span>
+                            ) : evalRes.is_pre_response_blocked ? (
                               <span className="inline-flex items-center text-[10px] text-[#B42318] font-semibold bg-[#FEF3F2] px-2 py-0.5 rounded-md border border-[#FECDCA]">
                                 Withheld
                               </span>
@@ -631,7 +642,14 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
                           ) : (
                             <>
                               <div className="bg-white/90 p-3.5 rounded-xl border border-slate-200 shadow-inner">
-                                {renderHighlightedResponse(item.response, evalRes)}
+                                {evalRes.input_guard ? (
+                                  <span className="italic text-xs text-[#667085]">
+                                    No model response: the input guard stopped the request before
+                                    the model was called.
+                                  </span>
+                                ) : (
+                                  renderHighlightedResponse(item.response, evalRes)
+                                )}
                               </div>
                               <UserVisibleResponsePanel
                                 evaluation={evalRes}

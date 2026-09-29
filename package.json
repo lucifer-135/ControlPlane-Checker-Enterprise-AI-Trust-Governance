@@ -32,6 +32,7 @@
     "bench": "tsx scripts/bench-long-context.ts",
     "demo:reset": "tsx scripts/demo-reset.ts",
     "demo:warm": "tsx scripts/demo-warm.ts",
+    "demo:gateway": "tsx scripts/demo-gateway.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },

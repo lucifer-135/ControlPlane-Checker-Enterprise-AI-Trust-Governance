@@ -1,5 +1,5 @@
 # ControlPlane Checker Policy Profile
-# Generated: 2026-09-27T22:23:34.802Z
+# Generated: 2026-09-29T19:32:33.929Z
 version: "3.1.0-strict"
 use_case: "decision_support"
 name: "Regulated Decision Support Profile"
@@ -7,7 +7,6 @@ description: "Highest regulatory scrutiny (FINRA, ECOA, HIPAA). Pre-response blo
 geography_ruleset: "US_HIPAA_FINRA"
 
 runtime_governance:
-  latency_budget_ms: 400
   pre_response_blocking: true
   fail_mode: "FAIL_CLOSED"
   timeout_fallback: "BLOCK"

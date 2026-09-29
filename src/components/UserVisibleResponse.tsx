@@ -14,7 +14,7 @@ interface UserVisibleResponsePanelProps {
 }
 
 /** Shows [REDACTED_*] placeholders as chips so the redactions stand out. */
-function renderRedactions(text: string) {
+export function renderRedactions(text: string) {
   return text.split(/(\[REDACTED_[A-Z_]+\])/g).map((part, idx) =>
     /^\[REDACTED_[A-Z_]+\]$/.test(part) ? (
       <span
@@ -38,14 +38,19 @@ export const UserVisibleResponsePanel: React.FC<UserVisibleResponsePanelProps> =
   originalResponse,
 }) => {
   const view = userVisibleResponse(evaluation, originalResponse);
-  const status = view.withheld
-    ? { label: 'Withheld', className: 'text-[#B42318] bg-[#FEF3F2] border-[#FECDCA]' }
-    : view.changed
-      ? {
-          label: 'Delivered with changes',
-          className: 'text-[#B54708] bg-[#FFFAEB] border-[#FEDF89]',
-        }
-      : { label: 'Delivered unchanged', className: 'text-[#067647] bg-[#ECFDF3] border-[#ABEFC6]' };
+  const status = view.rejected
+    ? { label: 'Rejected · HTTP 400', className: 'text-[#B42318] bg-[#FEF3F2] border-[#FECDCA]' }
+    : view.withheld
+      ? { label: 'Withheld', className: 'text-[#B42318] bg-[#FEF3F2] border-[#FECDCA]' }
+      : view.changed
+        ? {
+            label: 'Delivered with changes',
+            className: 'text-[#B54708] bg-[#FFFAEB] border-[#FEDF89]',
+          }
+        : {
+            label: 'Delivered unchanged',
+            className: 'text-[#067647] bg-[#ECFDF3] border-[#ABEFC6]',
+          };
 
   return (
     <div className="mt-3">
@@ -61,7 +66,13 @@ export const UserVisibleResponsePanel: React.FC<UserVisibleResponsePanelProps> =
         </span>
       </div>
       <div className="bg-[#F9FAFB] border border-dashed border-slate-300 rounded-xl p-3.5 text-xs leading-relaxed text-[#101828] whitespace-pre-wrap">
-        {view.withheld ? (
+        {view.rejected ? (
+          <span className="font-mono text-[11px] text-[#B42318]">
+            {'{ "error": { "message": '}
+            {JSON.stringify(view.body)}
+            {', "code": "input_guard_violation" } }'}
+          </span>
+        ) : view.withheld ? (
           <span className="italic text-[#475467]">{view.body}</span>
         ) : (
           renderRedactions(view.body)

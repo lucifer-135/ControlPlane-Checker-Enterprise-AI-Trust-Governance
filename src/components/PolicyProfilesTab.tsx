@@ -6,6 +6,7 @@
 import React, { useState } from 'react';
 import { GeographyRuleset, PolicyProfile, UseCaseId } from '../types';
 import { policyToYaml } from '../lib/policyProfiles';
+import { laneSharePercents } from '../lib/decisionEngine';
 import { GlassDropdown } from './GlassDropdown';
 import {
   Sliders,
@@ -52,6 +53,22 @@ export const PolicyProfilesTab: React.FC<PolicyProfilesTabProps> = ({
   };
 
   const currentProfile = policyProfiles[activeUseCase];
+  // Weights are relative; these are the shares the decision engine actually uses
+  const laneShares = laneSharePercents(currentProfile);
+
+  // Any lane may be weighted 0 (it then acts only through its hard rules), but not
+  // every active lane: the risk score would have nothing left to average
+  const setLaneWeight = (lane: keyof PolicyProfile['lane_weights'], value: number) => {
+    const lane_weights = { ...currentProfile.lane_weights, [lane]: value };
+    const activeTotal = (['performance', 'cost', 'responsibility'] as const).reduce(
+      (sum, l) => sum + (currentProfile.active_lanes[l] ? lane_weights[l] : 0),
+      0,
+    );
+    if (activeTotal <= 0) return;
+    onUpdateProfile(activeUseCase, { ...currentProfile, lane_weights });
+  };
+  const weightCaption = (weight: number) =>
+    weight === 0 ? 'weight 0.00 · hard rules only' : `weight ${weight.toFixed(2)}`;
 
   const handleCopyYaml = () => {
     const yaml = policyToYaml(currentProfile);
@@ -376,25 +393,28 @@ export const PolicyProfilesTab: React.FC<PolicyProfilesTabProps> = ({
 
             {/* Lane Weights Distribution */}
             <div className="glass-panel rounded-2xl p-6 space-y-6">
-              <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-                <span className="font-headline text-lg text-[#101828] font-semibold tracking-tight flex items-center">
-                  <Layers className="h-4 w-4 mr-2 text-[#4F46E5]" />
-                  Lane Weights Composition
-                </span>
-                <span className="font-mono text-xs text-[#667085] tnum">
-                  P:{' '}
-                  <span className="text-[#175CD3] font-semibold">
-                    {(currentProfile.lane_weights.performance * 100).toFixed(0)}%
-                  </span>{' '}
-                  · C:{' '}
-                  <span className="text-[#B54708] font-semibold">
-                    {(currentProfile.lane_weights.cost * 100).toFixed(0)}%
-                  </span>{' '}
-                  · R:{' '}
-                  <span className="text-[#6941C6] font-semibold">
-                    {(currentProfile.lane_weights.responsibility * 100).toFixed(0)}%
+              <div className="border-b border-slate-200 pb-3 space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="font-headline text-lg text-[#101828] font-semibold tracking-tight flex items-center">
+                    <Layers className="h-4 w-4 mr-2 text-[#4F46E5]" />
+                    Lane Weights Composition
                   </span>
-                </span>
+                  <span className="font-mono text-xs text-[#667085] tnum">
+                    P:{' '}
+                    <span className="text-[#175CD3] font-semibold">{laneShares.performance}%</span>{' '}
+                    · C: <span className="text-[#B54708] font-semibold">{laneShares.cost}%</span> ·
+                    R:{' '}
+                    <span className="text-[#6941C6] font-semibold">
+                      {laneShares.responsibility}%
+                    </span>
+                  </span>
+                </div>
+                <p className="text-[11px] text-[#667085] leading-relaxed">
+                  Weights are relative: each lane's share of the risk score is its weight divided by
+                  the total of the three, so the shares always add up to 100%. A lane at 0 leaves
+                  the score, but its hard rules (SSN or card, protected-class bias, runaway loop,
+                  confidently wrong) still force a block.
+                </p>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
@@ -403,26 +423,21 @@ export const PolicyProfilesTab: React.FC<PolicyProfilesTabProps> = ({
                   <div className="flex justify-between items-center">
                     <span className="text-[13px] text-[#344054] font-medium">Performance</span>
                     <span className="font-mono text-xs tnum text-[#175CD3] bg-white border border-[#B2DDFF] rounded-lg px-2 py-0.5 font-bold shadow-xs">
-                      {(currentProfile.lane_weights.performance * 100).toFixed(0)}%
+                      {laneShares.performance}%
                     </span>
                   </div>
                   <input
                     type="range"
-                    min="0.10"
+                    min="0"
                     max="0.80"
                     step="0.05"
                     value={currentProfile.lane_weights.performance}
-                    onChange={(e) =>
-                      onUpdateProfile(activeUseCase, {
-                        ...currentProfile,
-                        lane_weights: {
-                          ...currentProfile.lane_weights,
-                          performance: parseFloat(e.target.value),
-                        },
-                      })
-                    }
+                    onChange={(e) => setLaneWeight('performance', parseFloat(e.target.value))}
                     className="w-full h-2.5 bg-slate-300 hover:bg-slate-400/70 border border-slate-400 rounded-full cursor-pointer shadow-inner accent-[#175CD3] transition-colors"
                   />
+                  <div className="text-[10px] font-mono tnum text-[#98A2B3]">
+                    {weightCaption(currentProfile.lane_weights.performance)}
+                  </div>
                 </div>
 
                 {/* Cost Weight */}
@@ -430,26 +445,21 @@ export const PolicyProfilesTab: React.FC<PolicyProfilesTabProps> = ({
                   <div className="flex justify-between items-center">
                     <span className="text-[13px] text-[#344054] font-medium">Cost</span>
                     <span className="font-mono text-xs tnum text-[#B54708] bg-white border border-[#FEDF89] rounded-lg px-2 py-0.5 font-bold shadow-xs">
-                      {(currentProfile.lane_weights.cost * 100).toFixed(0)}%
+                      {laneShares.cost}%
                     </span>
                   </div>
                   <input
                     type="range"
-                    min="0.05"
+                    min="0"
                     max="0.60"
                     step="0.05"
                     value={currentProfile.lane_weights.cost}
-                    onChange={(e) =>
-                      onUpdateProfile(activeUseCase, {
-                        ...currentProfile,
-                        lane_weights: {
-                          ...currentProfile.lane_weights,
-                          cost: parseFloat(e.target.value),
-                        },
-                      })
-                    }
+                    onChange={(e) => setLaneWeight('cost', parseFloat(e.target.value))}
                     className="w-full h-2.5 bg-slate-300 hover:bg-slate-400/70 border border-slate-400 rounded-full cursor-pointer shadow-inner accent-[#B54708] transition-colors"
                   />
+                  <div className="text-[10px] font-mono tnum text-[#98A2B3]">
+                    {weightCaption(currentProfile.lane_weights.cost)}
+                  </div>
                 </div>
 
                 {/* Responsibility Weight */}
@@ -457,26 +467,21 @@ export const PolicyProfilesTab: React.FC<PolicyProfilesTabProps> = ({
                   <div className="flex justify-between items-center">
                     <span className="text-[13px] text-[#344054] font-medium">Responsibility</span>
                     <span className="font-mono text-xs tnum text-[#6941C6] bg-white border border-[#D9D6FE] rounded-lg px-2 py-0.5 font-bold shadow-xs">
-                      {(currentProfile.lane_weights.responsibility * 100).toFixed(0)}%
+                      {laneShares.responsibility}%
                     </span>
                   </div>
                   <input
                     type="range"
-                    min="0.10"
+                    min="0"
                     max="0.80"
                     step="0.05"
                     value={currentProfile.lane_weights.responsibility}
-                    onChange={(e) =>
-                      onUpdateProfile(activeUseCase, {
-                        ...currentProfile,
-                        lane_weights: {
-                          ...currentProfile.lane_weights,
-                          responsibility: parseFloat(e.target.value),
-                        },
-                      })
-                    }
+                    onChange={(e) => setLaneWeight('responsibility', parseFloat(e.target.value))}
                     className="w-full h-2.5 bg-slate-300 hover:bg-slate-400/70 border border-slate-400 rounded-full cursor-pointer shadow-inner accent-[#6941C6] transition-colors"
                   />
+                  <div className="text-[10px] font-mono tnum text-[#98A2B3]">
+                    {weightCaption(currentProfile.lane_weights.responsibility)}
+                  </div>
                 </div>
               </div>
             </div>

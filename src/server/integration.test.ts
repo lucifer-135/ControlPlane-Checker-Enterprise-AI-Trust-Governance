@@ -212,6 +212,16 @@ describe('Integration: real Express app in required auth mode', () => {
     });
     expect(invalid.status).toBe(400);
 
+    // A lane may be weighted 0, but not every lane
+    const oneLaneOff = await call('PUT', '/api/policies/support_bot', keys.adminA, {
+      lane_weights: { cost: 0 },
+    });
+    expect(oneLaneOff.status).toBe(200);
+    const allLanesOff = await call('PUT', '/api/policies/support_bot', keys.adminA, {
+      lane_weights: { performance: 0, cost: 0, responsibility: 0 },
+    });
+    expect(allLanesOff.status).toBe(400);
+
     await call('POST', '/api/policies/reset', keys.adminA);
   });
 

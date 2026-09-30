@@ -52,7 +52,15 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editedText, setEditedText] = useState<string>('');
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  // Cards open and close independently, so several can be compared side by side
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
+  const toggleExpanded = (id: string) =>
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [violationFilter, setViolationFilter] = useState<string>('ALL');
 
@@ -64,7 +72,7 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
         setIncludeSoftCorrect(true);
       }
 
-      setExpandedId(selectedReviewId);
+      setExpandedIds((prev) => new Set(prev).add(selectedReviewId));
       setHighlightedId(selectedReviewId);
 
       const timer = setTimeout(() => {
@@ -113,8 +121,8 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
 
   // Initialize first item as expanded if none is set yet and not navigating with specific ID
   useEffect(() => {
-    if (!expandedId && !selectedReviewId && pendingInteractions.length > 0) {
-      setExpandedId(pendingInteractions[0].id);
+    if (expandedIds.size === 0 && !selectedReviewId && pendingInteractions.length > 0) {
+      setExpandedIds(new Set([pendingInteractions[0].id]));
     }
   }, [pendingInteractions.length]);
 
@@ -444,7 +452,7 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
             const evalRes = evaluations[item.id];
             if (!evalRes) return null;
 
-            const isExpanded = expandedId === item.id;
+            const isExpanded = expandedIds.has(item.id);
             const isHighlighted = highlightedId === item.id;
             const isEditing = editingId === item.id;
 
@@ -464,7 +472,7 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
               >
                 {/* Item Card Header (Clickable Dropdown Toggle) */}
                 <div
-                  onClick={() => setExpandedId(isExpanded ? null : item.id)}
+                  onClick={() => toggleExpanded(item.id)}
                   className="p-5 cursor-pointer hover:bg-white/50 transition-colors flex flex-col md:flex-row md:items-center justify-between gap-4 select-none"
                   role="button"
                   tabIndex={0}

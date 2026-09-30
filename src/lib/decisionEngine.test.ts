@@ -6,7 +6,12 @@
 import { describe, expect, it } from 'vitest';
 import { SYNTHETIC_INTERACTIONS } from '../data/interactions';
 import { DEFAULT_POLICY_PROFILES } from './policyProfiles';
-import { evaluateDataset, evaluateInteraction } from './decisionEngine';
+import {
+  effectiveLaneWeights,
+  evaluateDataset,
+  evaluateInteraction,
+  laneSharePercents,
+} from './decisionEngine';
 import type { SyntheticInteraction, SessionState } from '../types';
 
 describe('evaluateDataset', () => {
@@ -351,5 +356,45 @@ describe('protected-class bias hard override', () => {
     );
     expect(result.responsibility.bias_flags.some((b) => b.includes('Ageism'))).toBe(true);
     expect(result.verdict).toBe('BLOCK_ESCALATE');
+  });
+});
+
+describe('lane weights', () => {
+  const base = DEFAULT_POLICY_PROFILES.support_bot;
+  const withWeights = (performance: number, cost: number, responsibility: number) => ({
+    ...base,
+    lane_weights: { performance, cost, responsibility },
+  });
+
+  it('treats weights as relative, so only their ratio matters', () => {
+    expect(effectiveLaneWeights(withWeights(0.8, 0.6, 0.6))).toEqual(
+      effectiveLaneWeights(withWeights(0.4, 0.3, 0.3)),
+    );
+    const interaction = SYNTHETIC_INTERACTIONS[0];
+    expect(evaluateInteraction(interaction, withWeights(0.8, 0.6, 0.6)).composite_risk_score).toBe(
+      evaluateInteraction(interaction, withWeights(0.4, 0.3, 0.3)).composite_risk_score,
+    );
+  });
+
+  it('shows shares as whole percentages that add up to 100', () => {
+    // 36.4 / 27.3 / 36.4: the leftover point goes to the largest remainder
+    expect(laneSharePercents(withWeights(0.8, 0.6, 0.8))).toEqual({
+      performance: 37,
+      cost: 27,
+      responsibility: 36,
+    });
+    for (const [p, c, r] of [
+      [0.35, 0.35, 0.35],
+      [0.1, 0.05, 0.8],
+      [0.45, 0.15, 0.4],
+    ]) {
+      const shares = laneSharePercents(withWeights(p, c, r));
+      expect(shares.performance + shares.cost + shares.responsibility).toBe(100);
+    }
+  });
+
+  it('gives an inactive lane no share', () => {
+    const policy = { ...base, active_lanes: { ...base.active_lanes, cost: false } };
+    expect(laneSharePercents(policy)).toEqual({ performance: 57, cost: 0, responsibility: 43 });
   });
 });

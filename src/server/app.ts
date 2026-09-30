@@ -144,6 +144,12 @@ function validatePolicyProfile(profile: PolicyProfile): string | null {
     if (!isFiniteNumber(value) || value < 0)
       return `lane_weights.${key} must be a non-negative number`;
   }
+  // A lane may be weighted 0, but the composite needs at least one weighted active lane
+  const activeWeight = (['performance', 'cost', 'responsibility'] as const).reduce(
+    (sum, lane) => sum + (profile.active_lanes?.[lane] === false ? 0 : profile.lane_weights[lane]),
+    0,
+  );
+  if (activeWeight <= 0) return 'at least one active lane needs a weight above 0';
   if (profile.failMode && !['FAIL_OPEN', 'FAIL_CLOSED'].includes(profile.failMode)) {
     return 'failMode must be FAIL_OPEN or FAIL_CLOSED';
   }

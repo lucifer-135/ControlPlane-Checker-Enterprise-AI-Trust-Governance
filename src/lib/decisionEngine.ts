@@ -25,6 +25,50 @@ import type { QueryBaseline } from '../data/baselines';
 export type SessionAccumulatorMap = Record<string, SessionState>;
 
 // ──────────────────────────────────────────────────────────────────────
+// Lane weights
+// ──────────────────────────────────────────────────────────────────────
+
+type Lane = 'performance' | 'cost' | 'responsibility';
+const LANES: Lane[] = ['performance', 'cost', 'responsibility'];
+
+/**
+ * Each lane's share of the composite risk. Policy weights are relative: a lane's
+ * share is its weight divided by the total weight of the active lanes, so
+ * 0.4/0.3/0.3 and 0.8/0.6/0.6 score identically. Inactive lanes get 0.
+ */
+export function effectiveLaneWeights(policy: PolicyProfile): Record<Lane, number> {
+  const weight = (lane: Lane) => (policy.active_lanes[lane] ? policy.lane_weights[lane] : 0);
+  const total = LANES.reduce((sum, lane) => sum + weight(lane), 0) || 1;
+  return {
+    performance: weight('performance') / total,
+    cost: weight('cost') / total,
+    responsibility: weight('responsibility') / total,
+  };
+}
+
+/** Lane shares as whole percentages that always add up to 100 (largest remainder). */
+export function laneSharePercents(policy: PolicyProfile): Record<Lane, number> {
+  const shares = effectiveLaneWeights(policy);
+  if (LANES.every((lane) => shares[lane] === 0)) {
+    return { performance: 0, cost: 0, responsibility: 0 };
+  }
+  const exact = LANES.map((lane) => ({ lane, value: shares[lane] * 100 }));
+  const result = Object.fromEntries(exact.map((e) => [e.lane, Math.floor(e.value)])) as Record<
+    Lane,
+    number
+  >;
+  let missing = 100 - LANES.reduce((sum, lane) => sum + result[lane], 0);
+  for (const { lane } of [...exact].sort(
+    (a, b) => b.value - Math.floor(b.value) - (a.value - Math.floor(a.value)),
+  )) {
+    if (missing <= 0) break;
+    result[lane] += 1;
+    missing -= 1;
+  }
+  return result;
+}
+
+// ──────────────────────────────────────────────────────────────────────
 // Exponential Time-Decay Session Risk Compounding
 // ──────────────────────────────────────────────────────────────────────
 
@@ -181,17 +225,7 @@ export function evaluateInteraction(
   const hasMultiLaneOverlap = overlappingLanes.length >= 2;
 
   // 3. Normalize active weights
-  let totalWeight = 0;
-  if (policy.active_lanes.performance) totalWeight += policy.lane_weights.performance;
-  if (policy.active_lanes.cost) totalWeight += policy.lane_weights.cost;
-  if (policy.active_lanes.responsibility) totalWeight += policy.lane_weights.responsibility;
-  if (totalWeight === 0) totalWeight = 1;
-
-  const wPerf = policy.active_lanes.performance ? policy.lane_weights.performance / totalWeight : 0;
-  const wCost = policy.active_lanes.cost ? policy.lane_weights.cost / totalWeight : 0;
-  const wResp = policy.active_lanes.responsibility
-    ? policy.lane_weights.responsibility / totalWeight
-    : 0;
+  const { performance: wPerf, cost: wCost, responsibility: wResp } = effectiveLaneWeights(policy);
 
   const rawComposite =
     performanceResult.risk_score * wPerf +

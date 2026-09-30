@@ -118,7 +118,15 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
   const [verdictFilter, setVerdictFilter] = useState<VerdictTier | 'ALL'>('ALL');
   const [anomalyFilter, setAnomalyFilter] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  // Cards open and close independently, so several can be compared side by side
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
+  const toggleExpanded = (id: string) =>
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   // Card briefly ringed after a jump to it, so the eye lands on it
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   useEffect(() => {
@@ -208,7 +216,7 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
     setAnomalyFilter('ALL');
     setSearchQuery('');
     setActiveUseCaseFilter('ALL');
-    setExpandedId(focusInteractionId);
+    setExpandedIds((prev) => new Set(prev).add(focusInteractionId));
     // Scroll once the expanded card has rendered; only then mark the focus as handled
     // (clearing it earlier would re-run this effect and cancel the scroll)
     const timer = setTimeout(() => {
@@ -386,7 +394,7 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
                 <Activity className="h-4 w-4 text-[#2E90FA]" />
               </div>
               <span className="text-[13px] text-[#101828] font-semibold">
-                Global Inference Stream &amp; Latency (p99)
+                Global Inference Stream &amp; Checker Overhead
               </span>
             </div>
             <span className="text-[10px] px-3 py-1 rounded-full bg-[#ECFDF3]/90 border border-[#ABEFC6] text-[#067647] flex items-center gap-1.5 font-medium whitespace-nowrap shadow-xs">
@@ -784,7 +792,7 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
             const evalRes = evaluations[item.id];
             if (!evalRes) return null;
 
-            const isExpanded = expandedId === item.id;
+            const isExpanded = expandedIds.has(item.id);
             const judgeData = judgeResults[item.id];
 
             return (
@@ -809,7 +817,7 @@ export const LiveFeedTab: React.FC<LiveFeedTabProps> = ({
               >
                 {/* Interaction Main Header Row */}
                 <div
-                  onClick={() => setExpandedId(isExpanded ? null : item.id)}
+                  onClick={() => toggleExpanded(item.id)}
                   className="p-5 cursor-pointer hover:bg-white/50 transition-colors flex flex-col md:flex-row md:items-center justify-between gap-4"
                 >
                   {/* Left: Metadata & Prompt Summary */}

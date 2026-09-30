@@ -10,7 +10,7 @@ ControlPlane Checker is an enterprise-grade AI trust, governance, and real-time 
 [![Express](https://img.shields.io/badge/Express-4.21-000000?logo=express&logoColor=white)](https://expressjs.com/)
 [![SQLite](https://img.shields.io/badge/SQLite-WAL_Mode-003B57?logo=sqlite&logoColor=white)](https://www.sqlite.org/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
-[![Vitest](https://img.shields.io/badge/Tests-322_Passing-6E9F18?logo=vitest&logoColor=white)](https://vitest.dev/)
+[![Vitest](https://img.shields.io/badge/Tests-343_Passing-6E9F18?logo=vitest&logoColor=white)](https://vitest.dev/)
 [![Google Gemini API](https://img.shields.io/badge/Google_Gemini-3.6%20%2F%203.8%20Flash-8E75B2?logo=google&logoColor=white)](https://ai.google.dev/)
 [![Ollama Qwen 2.5](https://img.shields.io/badge/Ollama-Qwen_2.5_7B-000000?logo=ollama&logoColor=white)](https://ollama.com/)
 
@@ -162,7 +162,7 @@ http://localhost:3000
 ### Additional commands
 
 - `npm run lint`: Static TypeScript type checking via `tsc --noEmit`.
-- `npm run test`: Executes the complete Vitest test suite (**322 tests passing across 29 test files**).
+- `npm run test`: Executes the complete Vitest test suite (**343 tests passing across 31 test files**).
 - `npm run test:coverage`: Generates comprehensive test coverage reports with v8.
 - `npm run bench`: Benchmarks decision engine and contradiction detector latency across 2k, 8k, and 32k token contexts (`scripts/bench-long-context.ts`).
 - `npm run demo:reset`: Pre-demo verification script that safely archives SQLite data, validates/provisions `AUDIT_HMAC_SECRET`, and probes Ollama readiness (`scripts/demo-reset.ts`).
@@ -203,7 +203,7 @@ The platform includes a comprehensive, production-grade test suite covering the 
 npm run test
 ```
 
-### Test coverage areas (322 Passing Tests across 29 Test Suites)
+### Test coverage areas (343 Passing Tests across 31 Test Suites)
 
 | Test Suite | File | Tests | Coverage |
 | :--- | :--- | :---: | :--- |
@@ -212,7 +212,7 @@ npm run test
 | **Stream Interceptor** | `src/server/streamInterceptor.test.ts` | 21 | SSE token interception, holdback buffer, emergency mid-stream cutoff, PII redaction |
 | **Gateway Playground Presets** | `src/server/gateway.scripted.test.ts` | 21 | Every preset's promised verdict, retrieved documents given to the model and used as evidence, scripted answers without a model call (JSON and stream), admin-only access, no baseline learning, workload tagging, per-request policy for admins vs key-bound policy |
 | **Forensic Tamper Detection** | `src/server/db/auditTamper.test.ts` | 17 | Chain tampering detection: payload mutation, deletion, reordering, re-signing prevention |
-| **Integration (HTTP)** | `src/server/integration.test.ts` | 16 | Real Express app: auth, RBAC, tenant scoping, PII redaction, circuit breaker |
+| **Integration (HTTP)** | `src/server/integration.test.ts` | 18 | Real Express app: auth, RBAC, tenant scoping, PII redaction, circuit breaker, audit-chain and review-decision-chain verification |
 | **Gateway Wire Compatibility** | `src/server/gateway.compat.test.ts` | 15 | OpenAI SDK wire compatibility, streaming choices, tool calls, finish reasons |
 | **Luhn Checksum & PII Format** | `src/lib/utils/luhn.test.ts` | 15 | Modulo-10 Luhn checksum validation, structured SSN validation, false-positive suppression |
 | **Input Guard** | `src/server/inputGuard.test.ts` | 13 | Jailbreaks, prompt injection, authority impersonation, system override attempts, PII scanning |
@@ -220,6 +220,7 @@ npm run test
 | **Delivery Treatment** | `src/lib/deliveryTreatment.test.ts` | 11 | End-user delivery treatments, withheld responses, disclaimers, verification notes |
 | **Gemini Cloud Judge** | `src/server/judge.gemini.test.ts` | 11 | Google Gemini backoff, jitter, model tier cycling, and structured schema enforcement |
 | **Contradiction Detector** | `src/lib/utils/contradictionDetector.test.ts` | 11 | Monetary amount mismatches, absolute entitlement denials, negation flips, antonyms |
+| **Review Decision Chain** | `src/server/db/decisionChain.test.ts` | 10 | Every decision signed and linked; reversed actions, swapped reviewers, deletions (first, middle, last), altered or removed head and re-signing without the key detected; older decisions signed once on upgrade |
 | **Findings Summarizer** | `src/lib/findings.test.ts` | 10 | Human-readable finding summaries and triggering claim span extraction |
 | **Multi-Provider LLM Judge** | `src/server/judge.test.ts` | 9 | Gemini, Local sovereign Qwen, dual consensus agreement, and delta scoring |
 | **Performance Lane** | `src/lib/lanes/performanceLane.test.ts` | 9 | Grounding evaluation, certainty bounds, confidently wrong detection, hallucination cutoffs |
@@ -231,6 +232,7 @@ npm run test
 | **Rolling Baselines** | `src/server/rollingBaseline.test.ts` | 7 | Online streaming Welford stats, validation, winsorization, versioned snapshots |
 | **Gateway Grounding** | `src/server/gateway.grounding.test.ts` | 7 | End-to-end gateway grounding enforcement, ungrounded refund blocking, documents counted once when sent in both the prompt and the header |
 | **Policy Loader** | `src/server/policyLoader.test.ts` | 6 | GitOps YAML parsing, duplicate use_case rejection, live write-back, round-trip |
+| **Audit-Trail Tamper Demo** | `src/server/db/demoTamper.test.ts` | 6 | `demo:tamper` reversals and deletions caught at the exact decision, picking by interaction, triggers restored, undo re-verifies |
 | **Gateway Events** | `src/server/gatewayEvents.test.ts` | 5 | PII event payload sanitization, tenant filters, sequence epochs, SSE backpressure |
 | **Model Catalog** | `src/lib/modelCatalog.test.ts` | 5 | Model-name routing to providers, chat-model filtering, `models/` de-duplication and grouping |
 | **Audit Chain** | `src/server/db/auditChain.test.ts` | 4 | SHA-256 HMAC cryptographic audit chaining & mathematical integrity verification |
@@ -254,6 +256,8 @@ ControlPlane Checker ships with production tools in `scripts/` to ensure predict
   5. Optionally restores baseline policy profiles from Git (`npm run demo:reset -- --restore-policies`).
 - **Judge Cache Pre-Warmer (`npm run demo:warm`)**:
   Pre-populates LLM judge evaluation records in SQLite for all 19 synthetic interactions, enabling instant response times and offline reliability during air-gapped demo sessions.
+- **Audit-Trail Tamper Demo (`npm run demo:tamper`)**:
+  Plays an insider with direct access to the database file: bypasses the app, drops the append-only triggers, reverses a reviewer's decision in the Review Decision Audit Trail (by default the latest `CONFIRM_BLOCK` becomes `OVERRIDE_ALLOW`, verdict `BLOCK_ESCALATE` → `ALLOW`), and restores the triggers so the database looks untouched. **Verify chain** in the Review Queue then shows the chain breaking at exactly that decision, and flags the altered row in the trail. `-- --interaction int-sb-011` targets the latest decision on that interaction, `-- --record 2` picks by position, `-- --delete` deletes the decision instead, and `-- --undo` restores the original so the chain verifies again.
 
 ## Solution architecture
 
@@ -578,6 +582,7 @@ Review decisions and audit records are **append-only**: SQLite triggers reject `
 - 1-click arbitration actions: **Approve & Release**, **Overturn & Correct**, **Escalate to Legal/Security**, or **Trigger Gemini / Qwen / Dual Judge**.
 - Adjudications are persisted directly to SQLite with automated session audit logging.
 - **Append-Only Decision Trail**: Recorded decisions cannot be edited or deleted (enforced by SQLite triggers). Each decision is attributed to the authenticated API key that made it, and a correction is recorded as a new decision.
+- **Signed Decision Chain & Audit Trail Integrity panel**: Every decision appended to the trail is signed (HMAC-SHA256) and linked to the one before it, with a signed chain head. The panel above the trail re-verifies it after every decision and on demand, and draws the latest decisions as a chain: green when verified, red where a decision was rewritten or deleted (the row in the trail is flagged too), grey for decisions after the break. Pair it with `npm run demo:tamper` to show a rewritten decision being caught live.
 
 ### 4. Gateway Playground
 
@@ -616,7 +621,7 @@ Review decisions and audit records are **append-only**: SQLite triggers reject `
 | **Cloud LLM Judge**    | [@google/genai](https://www.npmjs.com/package/@google/genai)                   | Server-side integration with Gemini 3.6 / 3.8 Flash models    |
 | **Local LLM Judge**    | [Ollama](https://ollama.com/) (Qwen 2.5: 7B)                                   | Zero-egress sovereign on-premises evaluation                  |
 | **Server Bundler**     | [esbuild](https://esbuild.github.io/)                                          | Fast bundling of backend TypeScript into `dist/server.cjs`    |
-| **Test Runner**        | [Vitest 3](https://vitest.dev/)                                                | Unit testing and v8 coverage analysis (322 tests passing across 29 test suites) |
+| **Test Runner**        | [Vitest 3](https://vitest.dev/)                                                | Unit testing and v8 coverage analysis (343 tests passing across 31 test suites) |
 | **Containerization**   | [Docker](https://www.docker.com/)                                              | Multi-stage production container with health checks           |
 
 ## Security and privacy posture
@@ -651,7 +656,8 @@ ControlPlane-Checker/
 │   ├── bench-long-context.ts # RAG context latency benchmarks (2k -> 32k tokens)
 │   ├── demo-reset.ts         # Pre-demo DB archive, audit key & readiness checks
 │   ├── demo-warm.ts          # LLM judge evaluation cache pre-warmer
-│   └── demo-gateway.ts       # Sends the demo scenarios through the live gateway
+│   ├── demo-gateway.ts       # Sends the demo scenarios through the live gateway
+│   └── demo-tamper.ts        # Rewrites a reviewer's decision behind the app's back (and undoes it)
 ├── policies/                 # GitOps YAML Policy Profiles
 │   ├── support-bot.yaml      # Support Bot policy configuration
 │   ├── decision-support.yaml # Decision Support strict policy
@@ -666,6 +672,7 @@ ControlPlane-Checker/
 │   ├── components/           # UI Components & Tabs
 │   │   ├── AmbientShaderBackground.tsx # Hardware-accelerated CSS ambient mesh
 │   │   ├── ApiKeyPrompt.tsx            # API key and role authentication modal
+│   │   ├── AuditChainPanel.tsx         # Audit trail (decision chain) verification & chain-break view
 │   │   ├── DashboardTab.tsx            # Executive KPI & overview charts
 │   │   ├── GeminiJudgeResultCard.tsx   # Multi-Judge & Dual consensus evaluation card
 │   │   ├── GlassDropdown.tsx           # Accessible frosted glass dropdown component
@@ -724,6 +731,8 @@ ControlPlane-Checker/
 │       ├── telemetry.ts                # Prometheus metrics formatting
 │       └── db/                         # Database Layer
 │           ├── auditChain.ts           # SHA-256 HMAC audit chaining & verification
+│           ├── decisionChain.ts        # Signed review decision chain (the audit trail)
+│           ├── demoTamper.ts           # demo:tamper insider simulation & undo
 │           ├── database.ts             # SQLite adapter (better-sqlite3)
 │           └── schema.ts               # Database DDL schema, migrations & append-only triggers
 └── dist/                     # Production build output (generated)

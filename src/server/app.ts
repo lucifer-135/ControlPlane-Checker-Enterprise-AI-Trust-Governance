@@ -59,7 +59,9 @@ import {
   insertAuditLog,
   getAuditLogs,
   getAllAuditLogsForVerification,
+  getAllReviewDecisionsForVerification,
   getAuditChainHead,
+  getReviewChainHead,
   insertReviewDecision,
   getReviewDecisions,
   getGatewayEscalationEvent,
@@ -68,7 +70,17 @@ import {
   API_KEY_ROLES,
   type ApiKeyRole,
 } from './db/database.js';
-import { isAuditSecretConfigured, verifyAuditChain } from './db/auditChain.js';
+import {
+  isAuditSecretConfigured,
+  summarizeChainBlocks,
+  verifyAuditChain,
+  type StoredAuditRecord,
+} from './db/auditChain.js';
+import {
+  summarizeDecisionBlocks,
+  verifyDecisionChain,
+  type StoredDecisionRecord,
+} from './db/decisionChain.js';
 import { recordEvaluationTelemetry, getPrometheusMetricsText } from './telemetry.js';
 import {
   evaluateJudgeRequest,
@@ -547,13 +559,24 @@ export function createApp(options: CreateAppOptions = {}): CreatedApp {
 
   // GET /api/audit-logs/verify - Cryptographic HMAC chain integrity verification
   // (the chain spans all tenants, so this is an administrative operation)
-  app.get('/api/audit-logs/verify', admin, (_req, res) => {
+  app.get('/api/audit-logs/verify', admin, (req, res) => {
     try {
       const allLogs = getAllAuditLogsForVerification();
-      const verification = verifyAuditChain(allLogs, undefined, getAuditChainHead());
+      const head = getAuditChainHead();
+      const verification = verifyAuditChain(allLogs, undefined, head);
+      // Other tenants' records show only their place in the chain
+      const filter = tenantFilterFor((req as AuthenticatedRequest).principal);
+      const isVisible = (record: StoredAuditRecord) =>
+        !filter ||
+        (record.org_id === filter.orgId &&
+          (!filter.workspaceId || record.workspace_id === filter.workspaceId));
       res.json({
         status: verification.valid ? 'INTEGRITY_VERIFIED' : 'TAMPER_DETECTED',
         ...verification,
+        totalRecords: allLogs.length,
+        // Records the signed chain head says exist (more than totalRecords when some were removed)
+        headRecordCount: head?.record_count ?? null,
+        blocks: summarizeChainBlocks(allLogs, verification, 12, isVisible),
         // Without a configured secret the chain is signed with a public key and can be forged
         signingSecretConfigured: isAuditSecretConfigured(),
         timestamp: new Date().toISOString(),
@@ -566,6 +589,33 @@ export function createApp(options: CreateAppOptions = {}): CreatedApp {
   // ──────────────────────────────────────────────────────────────────────
   // Human-In-The-Lead (HITL) Review Decision Endpoints — append-only
   // ──────────────────────────────────────────────────────────────────────
+
+  // GET /api/review-decisions/verify - Verifies the signed, linked review decision chain
+  // (the Review Decision Audit Trail). The chain spans all tenants, so this is an
+  // administrative operation; other tenants' decisions show only their place in it.
+  app.get('/api/review-decisions/verify', admin, (req, res) => {
+    try {
+      const decisions = getAllReviewDecisionsForVerification();
+      const head = getReviewChainHead();
+      const verification = verifyDecisionChain(decisions, undefined, head);
+      const filter = tenantFilterFor((req as AuthenticatedRequest).principal);
+      const isVisible = (record: StoredDecisionRecord) =>
+        !filter ||
+        (record.org_id === filter.orgId &&
+          (!filter.workspaceId || record.workspace_id === filter.workspaceId));
+      res.json({
+        status: verification.valid ? 'INTEGRITY_VERIFIED' : 'TAMPER_DETECTED',
+        ...verification,
+        totalRecords: decisions.length,
+        headRecordCount: head?.record_count ?? null,
+        blocks: summarizeDecisionBlocks(decisions, verification, 12, isVisible),
+        signingSecretConfigured: isAuditSecretConfigured(),
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
 
   // GET /api/review-decisions - Query persisted review decisions for the caller's tenant
   app.get('/api/review-decisions', viewer, (req, res) => {

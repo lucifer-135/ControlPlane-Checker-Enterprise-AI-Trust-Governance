@@ -33,6 +33,7 @@
     "demo:reset": "tsx scripts/demo-reset.ts",
     "demo:warm": "tsx scripts/demo-warm.ts",
     "demo:gateway": "tsx scripts/demo-gateway.ts",
+    "demo:tamper": "tsx scripts/demo-tamper.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },

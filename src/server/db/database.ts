@@ -21,6 +21,7 @@ import * as path from 'path';
 import crypto from 'crypto';
 import {
   CURRENT_CHAIN_VERSION,
+  computeChainHeadHMAC,
   computeEvidenceHash,
   computeHeadHMAC,
   computeRecordHMAC,
@@ -29,6 +30,12 @@ import {
   type StoredAuditRecord,
   type AuditRecordPayload,
 } from './auditChain.js';
+import {
+  computeDecisionHMAC,
+  DECISION_CHAIN_HEAD_TAG,
+  type DecisionRecordPayload,
+  type StoredDecisionRecord,
+} from './decisionChain.js';
 import { TABLES_SQL, COLUMN_MIGRATIONS, POST_MIGRATION_SQL } from './schema.js';
 import { DEMO_API_KEY, getBootstrapAdminKey, isDemoKeyAllowed } from '../config.js';
 import type {
@@ -44,7 +51,7 @@ const DEFAULT_DB_DIR = path.resolve(process.cwd(), 'data');
 const DEFAULT_DB_PATH = path.join(DEFAULT_DB_DIR, 'controlplane.db');
 
 /** CONTROLPLANE_DB_PATH overrides the on-disk location (tests use ':memory:'). */
-function resolveDbPath(): string {
+export function resolveDbPath(): string {
   return process.env.CONTROLPLANE_DB_PATH || DEFAULT_DB_PATH;
 }
 
@@ -105,6 +112,7 @@ export function initDatabase(dbPath: string = resolveDbPath()): Database.Databas
   console.log(`[Database] SQLite database initialized at: ${dbPath}`);
 
   initAuditChainHead();
+  initReviewDecisionChain();
   seedApiKeys();
 
   return db;
@@ -358,44 +366,137 @@ export class DuplicateReviewDecisionError extends Error {
   }
 }
 
+export function getReviewChainHead(): AuditChainHead | null {
+  const row = getDb()
+    .prepare('SELECT record_count, last_hmac, head_hmac FROM review_chain_head WHERE id = 1')
+    .get() as AuditChainHead | undefined;
+  return row ?? null;
+}
+
+function writeReviewChainHead(recordCount: number, lastHmac: string | null): void {
+  getDb()
+    .prepare(
+      `INSERT INTO review_chain_head (id, record_count, last_hmac, head_hmac, updated_at)
+       VALUES (1, ?, ?, ?, datetime('now'))
+       ON CONFLICT(id) DO UPDATE SET record_count = excluded.record_count,
+         last_hmac = excluded.last_hmac, head_hmac = excluded.head_hmac,
+         updated_at = excluded.updated_at`,
+    )
+    .run(
+      recordCount,
+      lastHmac,
+      computeChainHeadHMAC(DECISION_CHAIN_HEAD_TAG, recordCount, lastHmac),
+    );
+}
+
+function getLatestDecisionHmac(): string | null {
+  const row = getDb()
+    .prepare('SELECT hmac FROM review_decisions ORDER BY rowid DESC LIMIT 1')
+    .get() as { hmac: string | null } | undefined;
+  return row?.hmac ?? null;
+}
+
 /**
- * Appends a review decision. Existing decisions can never be replaced or deleted
- * (SQLite triggers enforce this); a correction is recorded as a new decision for
- * the same interaction, and the most recent decision is the effective one.
+ * Decisions recorded before decisions were signed are signed once, in order (trust
+ * on first use), and the chain head is pinned to the current end; from then on any
+ * edit or removal is detected.
+ */
+function initReviewDecisionChain(): void {
+  const database = getDb();
+  const rows = database
+    .prepare('SELECT rowid AS _rowid, * FROM review_decisions ORDER BY rowid')
+    .all() as (StoredDecisionRecord & { _rowid: number })[];
+  if (rows.length > 0 && rows.every((r) => !r.hmac)) {
+    database.transaction(() => {
+      database.exec('DROP TRIGGER IF EXISTS trg_review_decisions_no_update');
+      const sign = database.prepare(
+        'UPDATE review_decisions SET prev_hmac = ?, hmac = ? WHERE rowid = ?',
+      );
+      let prev: string | null = null;
+      for (const row of rows) {
+        const hmac = computeDecisionHMAC({ ...row, prev_hmac: prev });
+        sign.run(prev, hmac, row._rowid);
+        prev = hmac;
+      }
+      database.exec(POST_MIGRATION_SQL);
+    })();
+    console.log(`[Database] Signed ${rows.length} existing review decisions into their chain`);
+  }
+  if (!getReviewChainHead()) writeReviewChainHead(rows.length, getLatestDecisionHmac());
+}
+
+/**
+ * Appends a review decision, signed and linked to the decision before it. Existing
+ * decisions can never be replaced or deleted (SQLite triggers enforce this, and the
+ * chain exposes anyone who bypasses them); a correction is recorded as a new
+ * decision for the same interaction, and the most recent decision is the effective one.
  */
 export function insertReviewDecision(
   decision: ReviewDecision,
   tenant: TenantStamp | null = null,
-): void {
-  const insert = getDb().prepare(`
-    INSERT INTO review_decisions (
-      id, interaction_id, reviewer, action, notes, edited_response,
-      original_verdict, new_verdict, primary_trigger_lane, reviewed_at,
-      org_id, workspace_id
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `);
+): StoredDecisionRecord {
+  // Reading the chain end, appending, and moving the head happen atomically
+  const append = getDb().transaction((): StoredDecisionRecord => {
+    const payload: DecisionRecordPayload = {
+      id: decision.id,
+      interaction_id: decision.interaction_id,
+      reviewer: decision.reviewer,
+      action: decision.action,
+      notes: decision.notes ?? null,
+      edited_response: decision.edited_response || null,
+      original_verdict: decision.original_verdict ?? null,
+      new_verdict: decision.new_verdict ?? null,
+      primary_trigger_lane: decision.primary_trigger_lane ?? null,
+      reviewed_at: decision.reviewed_at,
+      org_id: tenant?.orgId ?? null,
+      workspace_id: tenant?.workspaceId ?? null,
+      prev_hmac: getLatestDecisionHmac(),
+    };
+    const hmac = computeDecisionHMAC(payload);
+    getDb()
+      .prepare(
+        `INSERT INTO review_decisions (
+          id, interaction_id, reviewer, action, notes, edited_response,
+          original_verdict, new_verdict, primary_trigger_lane, reviewed_at,
+          org_id, workspace_id, prev_hmac, hmac
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        payload.id,
+        payload.interaction_id,
+        payload.reviewer,
+        payload.action,
+        payload.notes,
+        payload.edited_response,
+        payload.original_verdict,
+        payload.new_verdict,
+        payload.primary_trigger_lane,
+        payload.reviewed_at,
+        payload.org_id,
+        payload.workspace_id,
+        payload.prev_hmac,
+        hmac,
+      );
+    const head = getReviewChainHead();
+    writeReviewChainHead((head?.record_count ?? 0) + 1, hmac);
+    return { ...payload, hmac };
+  });
 
   try {
-    insert.run(
-      decision.id,
-      decision.interaction_id,
-      decision.reviewer,
-      decision.action,
-      decision.notes,
-      decision.edited_response || null,
-      decision.original_verdict,
-      decision.new_verdict,
-      decision.primary_trigger_lane,
-      decision.reviewed_at,
-      tenant?.orgId ?? null,
-      tenant?.workspaceId ?? null,
-    );
+    return append();
   } catch (err: any) {
     if (err?.code === 'SQLITE_CONSTRAINT_PRIMARYKEY' || err?.code === 'SQLITE_CONSTRAINT_UNIQUE') {
       throw new DuplicateReviewDecisionError(decision.id);
     }
     throw err;
   }
+}
+
+/** Every review decision, oldest first, for chain verification. */
+export function getAllReviewDecisionsForVerification(): StoredDecisionRecord[] {
+  return getDb()
+    .prepare('SELECT * FROM review_decisions ORDER BY rowid ASC')
+    .all() as StoredDecisionRecord[];
 }
 
 export function getReviewDecisions(

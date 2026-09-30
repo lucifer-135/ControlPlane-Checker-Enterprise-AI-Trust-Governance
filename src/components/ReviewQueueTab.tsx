@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   EvaluationResult,
   ReviewDecision,
@@ -28,6 +28,7 @@ import {
   ChevronUp,
 } from 'lucide-react';
 import { InteractionContextPanel } from './InteractionContextPanel';
+import { AuditChainPanel, type AuditChainStatus } from './AuditChainPanel';
 import { displayClaimSpans } from '../lib/findings';
 import { UserVisibleResponsePanel } from './UserVisibleResponse';
 
@@ -36,6 +37,8 @@ interface ReviewQueueTabProps {
   evaluations: Record<string, EvaluationResult>;
   reviewDecisions: ReviewDecision[];
   onReviewDecision: (decision: ReviewDecision) => void;
+  /** Reloads the trail from the database (after the chain is re-verified). */
+  onReloadReviewDecisions?: () => void;
   selectedReviewId?: string | null;
   onClearSelectedReviewId?: () => void;
 }
@@ -45,9 +48,25 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
   evaluations,
   reviewDecisions,
   onReviewDecision,
+  onReloadReviewDecisions,
   selectedReviewId,
   onClearSelectedReviewId,
 }) => {
+  // The trail row where the signed chain breaks, flagged in the table
+  const [chainBreak, setChainBreak] = useState<{ id: string; label: string } | null>(null);
+  const handleChainVerified = useCallback((status: AuditChainStatus) => {
+    const label =
+      status.kind === 'signature'
+        ? 'Altered after signing'
+        : status.kind === 'link'
+          ? 'Decision before it deleted'
+          : status.kind === 'genesis'
+            ? 'Earlier decisions deleted'
+            : null;
+    setChainBreak(
+      !status.valid && label && status.brokenRecordId ? { id: status.brokenRecordId, label } : null,
+    );
+  }, []);
   const [includeSoftCorrect, setIncludeSoftCorrect] = useState<boolean>(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editedText, setEditedText] = useState<string>('');
@@ -760,6 +779,13 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
         )}
       </div>
 
+      {/* Tamper evidence for the trail below: every decision is signed and linked */}
+      <AuditChainPanel
+        refreshKey={reviewDecisions}
+        onVerified={handleChainVerified}
+        onManualVerify={onReloadReviewDecisions}
+      />
+
       {/* 3. Decision Audit Log Table */}
       <div className="glass-panel rounded-2xl p-6 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-200 pb-3 gap-3">
@@ -802,12 +828,23 @@ export const ReviewQueueTab: React.FC<ReviewQueueTabProps> = ({
               </thead>
               <tbody className="divide-y divide-slate-200 text-xs">
                 {reviewDecisions.map((d) => (
-                  <tr key={d.id} className="hover:bg-white/60 transition-colors">
+                  <tr
+                    key={d.id}
+                    className={`transition-colors ${
+                      chainBreak?.id === d.id ? 'bg-[#FEF3F2]' : 'hover:bg-white/60'
+                    }`}
+                  >
                     <td className="py-3 px-4 font-mono tnum text-[#667085]">
                       {new Date(d.reviewed_at).toLocaleTimeString()}
                     </td>
                     <td className="py-3 px-4 font-mono tnum font-semibold text-[#101828]">
                       {d.interaction_id}
+                      {chainBreak?.id === d.id && (
+                        <span className="ml-2 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-sans font-semibold bg-white text-[#B42318] border border-[#FECDCA] whitespace-nowrap">
+                          <ShieldAlert className="h-3 w-3" />
+                          {chainBreak.label}
+                        </span>
+                      )}
                     </td>
                     <td className="py-3 px-4 text-[#344054]">{d.reviewer}</td>
                     <td className="py-3 px-4">

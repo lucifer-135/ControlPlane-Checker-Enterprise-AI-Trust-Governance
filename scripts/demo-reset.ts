@@ -11,7 +11,7 @@
  *
  * 1. Refuses to run while the server is up (SQLite files are open).
  * 2. Generates AUDIT_HMAC_SECRET in .env if missing (the value is never printed).
- * 3. Archives the database to data/archive/<timestamp>/ (nothing is deleted).
+ * 3. Archives the database (and any pending demo:tamper undo) to data/archive/<timestamp>/.
  * 4. Reports policy files that differ from the last commit (restores them on request).
  * 5. Checks that Ollama is running with the local judge model.
  */
@@ -21,6 +21,7 @@ import crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import { execFileSync } from 'child_process';
+import { undoFileFor } from '../src/server/db/demoTamper';
 
 const root = process.cwd();
 const port = process.env.PORT || '3000';
@@ -55,7 +56,10 @@ function ensureAuditSecret(): void {
 
 function archiveDatabase(): void {
   const dbPath = process.env.CONTROLPLANE_DB_PATH || path.join(root, 'data', 'controlplane.db');
-  const files = [dbPath, `${dbPath}-wal`, `${dbPath}-shm`].filter((f) => fs.existsSync(f));
+  // A pending demo:tamper undo belongs to this database and goes with it
+  const files = [dbPath, `${dbPath}-wal`, `${dbPath}-shm`, undoFileFor(dbPath)].filter((f) =>
+    fs.existsSync(f),
+  );
   if (files.length === 0) {
     ok('No database yet: the server will create a fresh one');
     return;

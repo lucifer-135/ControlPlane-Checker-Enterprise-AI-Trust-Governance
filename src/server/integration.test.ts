@@ -20,7 +20,10 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { createApp, type CreatedApp } from './app.js';
-import { createNewApiKey, initDatabase } from './db/database.js';
+import { createNewApiKey, initDatabase, insertAuditLog } from './db/database.js';
+import { SYNTHETIC_INTERACTIONS } from '../data/interactions.js';
+import { evaluateInteraction } from '../lib/decisionEngine.js';
+import { DEFAULT_POLICY_PROFILES } from '../lib/policyProfiles.js';
 import { getUpstreamBreaker, buildModelCandidates } from './gateway.js';
 import { DuplicatePolicyError } from './policyLoader.js';
 import { getPrometheusMetricsText } from './telemetry.js';
@@ -160,6 +163,26 @@ describe('Integration: real Express app in required auth mode', () => {
     expect((await call('GET', '/api/audit-logs/verify', keys.viewerA)).status).toBe(403);
   });
 
+  it('verifies the audit chain for admins, showing other tenants only as places in the chain', async () => {
+    const item = SYNTHETIC_INTERACTIONS[0];
+    const evaluation = evaluateInteraction(item, DEFAULT_POLICY_PROFILES.support_bot);
+    insertAuditLog({ ...item, id: 'int-chain-a' }, evaluation, {
+      tenant: { orgId: 'org_a', workspaceId: 'ws1' },
+    });
+    insertAuditLog({ ...item, id: 'int-chain-b' }, evaluation, {
+      tenant: { orgId: 'org_b', workspaceId: 'ws1' },
+    });
+
+    const body = await (await call('GET', '/api/audit-logs/verify', keys.adminA)).json();
+    expect(body).toMatchObject({ status: 'INTEGRITY_VERIFIED', valid: true });
+    expect(body.totalRecords).toBeGreaterThanOrEqual(2);
+    expect(body.blocks.length).toBe(Math.min(12, body.totalRecords));
+    expect(body.blocks.every((b: any) => b.state === 'verified')).toBe(true);
+    const [ownRecord, otherTenant] = body.blocks.slice(-2);
+    expect(ownRecord).toMatchObject({ interaction_id: 'int-chain-a' });
+    expect(otherTenant).toMatchObject({ interaction_id: null, verdict: null });
+  });
+
   it('attributes review decisions to the authenticated key, not a client-supplied name', async () => {
     const resp = await call('POST', '/api/review-decisions', keys.reviewerA, {
       id: 'dec-identity-test',
@@ -180,6 +203,38 @@ describe('Integration: real Express app in required auth mode', () => {
       await call('GET', '/api/review-decisions?interactionId=int-identity-test', keys.viewerA)
     ).json();
     expect(stored[0].reviewer).toBe(decision.reviewer);
+  });
+
+  it('verifies the signed review decision chain for admins', async () => {
+    expect((await call('GET', '/api/review-decisions/verify', keys.viewerA)).status).toBe(403);
+    expect((await call('GET', '/api/review-decisions/verify', keys.reviewerA)).status).toBe(403);
+
+    for (const [id, key] of [
+      ['dec-chain-a', keys.reviewerA],
+      ['dec-chain-b', keys.reviewerB],
+    ] as const) {
+      const resp = await call('POST', '/api/review-decisions', key, {
+        id,
+        interaction_id: `int-${id}`,
+        action: 'CONFIRM_BLOCK',
+        notes: '',
+        original_verdict: 'BLOCK_ESCALATE',
+        new_verdict: 'BLOCK_ESCALATE',
+        primary_trigger_lane: 'Responsibility',
+      });
+      expect(resp.status).toBe(200);
+    }
+
+    const body = await (await call('GET', '/api/review-decisions/verify', keys.adminA)).json();
+    expect(body).toMatchObject({ status: 'INTEGRITY_VERIFIED', valid: true });
+    expect(body.headRecordCount).toBe(body.totalRecords);
+    const [own, otherTenant] = body.blocks.slice(-2);
+    expect(own).toMatchObject({
+      interaction_id: 'int-dec-chain-a',
+      action: 'CONFIRM_BLOCK',
+      state: 'verified',
+    });
+    expect(otherTenant).toMatchObject({ interaction_id: null, action: null, reviewer: null });
   });
 
   it('limits key creation to the admin’s own org', async () => {

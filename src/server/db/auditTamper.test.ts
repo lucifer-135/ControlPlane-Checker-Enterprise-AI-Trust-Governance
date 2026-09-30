@@ -77,7 +77,12 @@ describe('audit chain tamper detection', () => {
   it('detects a changed verdict at the exact record', () => {
     const target = ids(db)[2];
     db.prepare("UPDATE audit_log SET verdict = 'ALLOW' WHERE id = ?").run(target);
-    expect(verify()).toMatchObject({ valid: false, brokenAtIndex: 2, brokenRecordId: target });
+    expect(verify()).toMatchObject({
+      valid: false,
+      brokenAtIndex: 2,
+      brokenRecordId: target,
+      kind: 'signature',
+    });
   });
 
   it('detects a changed risk score', () => {
@@ -90,7 +95,7 @@ describe('audit chain tamper detection', () => {
       `UPDATE audit_log SET responsibility_json = '{"pii_detected":[],"risk_score":0}' WHERE id = ?`,
     ).run(ids(db)[2]);
     const result = verify();
-    expect(result).toMatchObject({ valid: false, brokenAtIndex: 2 });
+    expect(result).toMatchObject({ valid: false, brokenAtIndex: 2, kind: 'evidence' });
     expect(result.reason).toContain('Evidence tampered');
   });
 
@@ -103,13 +108,13 @@ describe('audit chain tamper detection', () => {
 
   it('detects a deleted middle record', () => {
     db.prepare('DELETE FROM audit_log WHERE id = ?').run(ids(db)[2]);
-    expect(verify()).toMatchObject({ valid: false, brokenAtIndex: 2 });
+    expect(verify()).toMatchObject({ valid: false, brokenAtIndex: 2, kind: 'link' });
   });
 
   it('detects the most recent record being deleted', () => {
     db.prepare('DELETE FROM audit_log WHERE id = ?').run(ids(db).at(-1));
     const result = verify();
-    expect(result.valid).toBe(false);
+    expect(result).toMatchObject({ valid: false, kind: 'truncated' });
     expect(result.reason).toContain('Chain truncated');
   });
 
@@ -122,7 +127,7 @@ describe('audit chain tamper detection', () => {
   it('detects the first (genesis) record being deleted', () => {
     db.prepare('DELETE FROM audit_log WHERE id = ?').run(ids(db)[0]);
     const result = verify();
-    expect(result).toMatchObject({ valid: false, brokenAtIndex: 0 });
+    expect(result).toMatchObject({ valid: false, brokenAtIndex: 0, kind: 'genesis' });
     expect(result.reason).toContain('does not start at genesis');
   });
 
@@ -147,11 +152,13 @@ describe('audit chain tamper detection', () => {
       }
     ).log_hmac;
     db.prepare('UPDATE audit_chain_head SET record_count = 4, last_hmac = ?').run(last);
+    expect(verify()).toMatchObject({ kind: 'head_invalid' });
     expect(verify().reason).toContain('head signature is invalid');
   });
 
   it('detects the chain head itself being deleted', () => {
     db.exec('DELETE FROM audit_chain_head');
+    expect(verify()).toMatchObject({ kind: 'head_missing' });
     expect(verify().reason).toContain('Chain head is missing');
   });
 

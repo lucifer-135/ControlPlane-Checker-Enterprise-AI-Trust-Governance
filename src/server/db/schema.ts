@@ -108,6 +108,9 @@ export const COLUMN_MIGRATIONS: { table: string; column: string; definition: str
   { table: 'audit_log', column: 'chain_version', definition: 'INTEGER' },
   { table: 'review_decisions', column: 'org_id', definition: 'TEXT' },
   { table: 'review_decisions', column: 'workspace_id', definition: 'TEXT' },
+  // Review decisions are chained: each is signed together with the one before it
+  { table: 'review_decisions', column: 'prev_hmac', definition: 'TEXT' },
+  { table: 'review_decisions', column: 'hmac', definition: 'TEXT' },
   { table: 'api_keys', column: 'role', definition: "TEXT NOT NULL DEFAULT 'service'" },
 ];
 
@@ -155,5 +158,20 @@ CREATE TRIGGER IF NOT EXISTS trg_audit_chain_head_no_delete
 BEFORE DELETE ON audit_chain_head
 BEGIN
   SELECT RAISE(ABORT, 'audit_chain_head cannot be deleted');
+END;
+
+-- The same signed end-of-chain pointer for the review decision chain.
+CREATE TABLE IF NOT EXISTS review_chain_head (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  record_count INTEGER NOT NULL,
+  last_hmac TEXT,
+  head_hmac TEXT NOT NULL,
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TRIGGER IF NOT EXISTS trg_review_chain_head_no_delete
+BEFORE DELETE ON review_chain_head
+BEGIN
+  SELECT RAISE(ABORT, 'review_chain_head cannot be deleted');
 END;
 `;

@@ -94,12 +94,30 @@ export interface AuditChainHead {
   head_hmac: string;
 }
 
+/** What broke the chain, so it can be explained without reading the technical reason. */
+export type ChainBreakKind =
+  /** The record was changed after it was signed. */
+  | 'signature'
+  /** The record's lane findings were changed after they were signed. */
+  | 'evidence'
+  /** A record before this one was removed or the records were reordered. */
+  | 'link'
+  /** The oldest records were removed. */
+  | 'genesis'
+  /** Records were removed from the end of the chain. */
+  | 'truncated'
+  /** The signed end-of-chain pointer was altered. */
+  | 'head_invalid'
+  /** The signed end-of-chain pointer was removed. */
+  | 'head_missing';
+
 export interface ChainVerificationResult {
   valid: boolean;
   totalVerified: number;
   brokenAtIndex?: number;
   brokenRecordId?: string;
   reason?: string;
+  kind?: ChainBreakKind;
 }
 
 const GENESIS_PREV =
@@ -175,17 +193,61 @@ export function computeRecordHMAC(
   return crypto.createHmac('sha256', secretKey).update(canonical).digest('hex');
 }
 
-/** Signature over the chain head, so its count and pointer cannot be rewritten without the key. */
-export function computeHeadHMAC(
+/**
+ * Signature over a chain head, so its count and pointer cannot be rewritten without
+ * the key. The tag keeps each chain's head signature distinct.
+ */
+export function computeChainHeadHMAC(
+  tag: string,
   recordCount: number,
   lastHmac: string | null,
   secretKey: string = getAuditSecret(),
 ): string {
   return crypto
     .createHmac('sha256', secretKey)
-    .update(JSON.stringify(['audit-chain-head', recordCount, lastHmac]))
+    .update(JSON.stringify([tag, recordCount, lastHmac]))
     .digest('hex');
 }
+
+/** Signature over the audit chain head. */
+export function computeHeadHMAC(
+  recordCount: number,
+  lastHmac: string | null,
+  secretKey: string = getAuditSecret(),
+): string {
+  return computeChainHeadHMAC('audit-chain-head', recordCount, lastHmac, secretKey);
+}
+
+/** How to read and re-sign one kind of chained record (audit records, review decisions). */
+export interface ChainSchema<T> {
+  id: (record: T) => string;
+  /** The signature of the previous record this one links to (null for the first). */
+  prev: (record: T) => string | null;
+  hmac: (record: T) => string;
+  /** Recomputes the record's signature from its stored content. */
+  sign: (record: T, secretKey: string) => string;
+  /** Tag of this chain's head signature. */
+  headTag: string;
+  /** A check run before the signature; returns why the record fails, or null. */
+  precheck?: (record: T, index: number) => { kind: ChainBreakKind; reason: string } | null;
+}
+
+const AUDIT_CHAIN: ChainSchema<StoredAuditRecord> = {
+  id: (r) => r.id,
+  prev: (r) => r.prev_log_hash,
+  hmac: (r) => r.log_hmac,
+  sign: (r, secretKey) => computeRecordHMAC(r, secretKey),
+  headTag: 'audit-chain-head',
+  // Version 2 records sign their lane evidence
+  precheck: (r, i) =>
+    (r.chain_version ?? 1) >= 2 &&
+    computeEvidenceHash(r.performance_json, r.cost_json, r.responsibility_json) !== r.evidence_hash
+      ? {
+          kind: 'evidence',
+          reason: `Evidence tampered at index ${i}: the stored lane findings no longer match their signed hash`,
+        }
+      : null,
+};
 
 /**
  * Validates the entire cryptographic chain of audit records.
@@ -200,21 +262,45 @@ export function verifyAuditChain(
   secretKey: string = getAuditSecret(),
   head?: AuditChainHead | null,
 ): ChainVerificationResult {
-  const fail = (index: number, reason: string, recordId?: string): ChainVerificationResult => ({
+  return verifyChain(records, AUDIT_CHAIN, secretKey, head);
+}
+
+/** Verifies any signed, linked chain (see verifyAuditChain). */
+export function verifyChain<T>(
+  records: T[],
+  schema: ChainSchema<T>,
+  secretKey: string = getAuditSecret(),
+  head?: AuditChainHead | null,
+): ChainVerificationResult {
+  const fail = (
+    index: number,
+    kind: ChainBreakKind,
+    reason: string,
+    recordId?: string,
+  ): ChainVerificationResult => ({
     valid: false,
     totalVerified: index,
     brokenAtIndex: index,
     brokenRecordId: recordId,
     reason,
+    kind,
   });
 
   if (head) {
-    if (computeHeadHMAC(head.record_count, head.last_hmac, secretKey) !== head.head_hmac) {
-      return fail(0, 'Chain head signature is invalid: the head record itself was altered');
+    if (
+      computeChainHeadHMAC(schema.headTag, head.record_count, head.last_hmac, secretKey) !==
+      head.head_hmac
+    ) {
+      return fail(
+        0,
+        'head_invalid',
+        'Chain head signature is invalid: the head record itself was altered',
+      );
     }
   } else if (head === null && records.length > 0) {
     return fail(
       0,
+      'head_missing',
       'Chain head is missing: records exist but the signed end-of-chain pointer was removed',
     );
   }
@@ -223,58 +309,52 @@ export function verifyAuditChain(
 
   for (let i = 0; i < records.length; i++) {
     const record = records[i];
+    const id = schema.id(record);
+    const prev = schema.prev(record);
 
     if (i === 0) {
       // The chain must start at genesis; anything else means earlier records were removed
-      if (record.prev_log_hash !== null) {
+      if (prev !== null) {
         return fail(
           0,
-          `Chain does not start at genesis: the first record '${record.id}' points to a predecessor that is missing, so earlier records were removed`,
-          record.id,
+          'genesis',
+          `Chain does not start at genesis: the first record '${id}' points to a predecessor that is missing, so earlier records were removed`,
+          id,
         );
       }
-    } else if (record.prev_log_hash !== expectedPrevHash) {
+    } else if (prev !== expectedPrevHash) {
       return fail(
         i,
-        `Chain broken at index ${i}: prev_log_hash '${record.prev_log_hash}' does not match prior record hmac '${expectedPrevHash}'`,
-        record.id,
+        'link',
+        `Chain broken at index ${i}: its link '${prev}' does not match the prior record's signature '${expectedPrevHash}'`,
+        id,
       );
     }
 
-    // Version 2 records sign their lane evidence
-    if ((record.chain_version ?? 1) >= 2) {
-      const evidence = computeEvidenceHash(
-        record.performance_json,
-        record.cost_json,
-        record.responsibility_json,
-      );
-      if (evidence !== record.evidence_hash) {
-        return fail(
-          i,
-          `Evidence tampered at index ${i}: the stored lane findings no longer match their signed hash`,
-          record.id,
-        );
-      }
-    }
+    const precheckFailure = schema.precheck?.(record, i);
+    if (precheckFailure) return fail(i, precheckFailure.kind, precheckFailure.reason, id);
 
     // Verify cryptographic signature of this block
-    const recomputed = computeRecordHMAC(record, secretKey);
-    if (recomputed !== record.log_hmac) {
+    const stored = schema.hmac(record);
+    const recomputed = schema.sign(record, secretKey);
+    if (recomputed !== stored) {
       return fail(
         i,
-        `Cryptographic tamper detected at index ${i}: stored hmac '${record.log_hmac}' does not match recomputed '${recomputed}'`,
-        record.id,
+        'signature',
+        `Cryptographic tamper detected at index ${i}: stored hmac '${stored}' does not match recomputed '${recomputed}'`,
+        id,
       );
     }
 
-    expectedPrevHash = record.log_hmac;
+    expectedPrevHash = stored;
   }
 
   if (head) {
-    const lastHmac = records.length > 0 ? records[records.length - 1].log_hmac : null;
+    const lastHmac = records.length > 0 ? schema.hmac(records[records.length - 1]) : null;
     if (head.record_count !== records.length || head.last_hmac !== lastHmac) {
       return fail(
         records.length,
+        'truncated',
         `Chain truncated: the signed head records ${head.record_count} entries ending in '${head.last_hmac}', ` +
           `but ${records.length} remain ending in '${lastHmac}'`,
       );
@@ -285,4 +365,86 @@ export function verifyAuditChain(
     valid: true,
     totalVerified: records.length,
   };
+}
+
+/** One chain record as shown to people: its place in the chain and how it verified. */
+export interface ChainBlockSummary {
+  /** Position in the chain, from 0 (the genesis record). */
+  index: number;
+  id: string;
+  /** Null for another tenant's record: only its place in the chain is shown. */
+  interaction_id: string | null;
+  verdict: string | null;
+  timestamp: string;
+  /** Start of the record's signature, and of the signature it links back to. */
+  hmac: string;
+  prev: string | null;
+  state: ChainBlockState;
+}
+
+/**
+ * verified: checked and intact. broken: where verification failed. unchecked: after
+ * the break, or behind a broken chain head, so it cannot be trusted.
+ */
+export type ChainBlockState = 'verified' | 'broken' | 'unchecked';
+
+export const SHORT_HASH_LENGTH = 10;
+
+/**
+ * The positions worth showing for a verification result, and how each verified:
+ * around the break when a record broke the chain (a few intact records before it,
+ * the untrusted ones after it), otherwise the latest ones.
+ */
+export function chainWindow(
+  total: number,
+  verification: ChainVerificationResult,
+  count = 12,
+): { index: number; state: ChainBlockState }[] {
+  const headBroken = verification.kind === 'head_invalid' || verification.kind === 'head_missing';
+  const brokenAt =
+    !verification.valid &&
+    !headBroken &&
+    verification.kind !== 'truncated' &&
+    verification.brokenAtIndex !== undefined
+      ? verification.brokenAtIndex
+      : -1;
+  const start =
+    brokenAt >= 0 ? Math.max(0, Math.min(brokenAt - 3, total - count)) : Math.max(0, total - count);
+  const end = Math.min(total, start + count);
+
+  const window: { index: number; state: ChainBlockState }[] = [];
+  for (let index = start; index < end; index++) {
+    const state: ChainBlockState = headBroken
+      ? 'unchecked'
+      : brokenAt < 0 || index < brokenAt
+        ? 'verified'
+        : index === brokenAt
+          ? 'broken'
+          : 'unchecked';
+    window.push({ index, state });
+  }
+  return window;
+}
+
+/** The audit records worth showing for a verification result (see chainWindow). */
+export function summarizeChainBlocks(
+  records: StoredAuditRecord[],
+  verification: ChainVerificationResult,
+  count = 12,
+  isVisible: (record: StoredAuditRecord) => boolean = () => true,
+): ChainBlockSummary[] {
+  return chainWindow(records.length, verification, count).map(({ index, state }) => {
+    const record = records[index];
+    const visible = isVisible(record);
+    return {
+      index,
+      id: record.id,
+      interaction_id: visible ? record.interaction_id : null,
+      verdict: visible ? record.verdict : null,
+      timestamp: record.timestamp,
+      hmac: record.log_hmac.slice(0, SHORT_HASH_LENGTH),
+      prev: record.prev_log_hash ? record.prev_log_hash.slice(0, SHORT_HASH_LENGTH) : null,
+      state,
+    };
+  });
 }

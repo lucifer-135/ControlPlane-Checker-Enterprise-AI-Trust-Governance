@@ -407,8 +407,9 @@ export function App() {
     };
   }, [authVersion]);
 
-  // Load persisted review decisions from server SQLite on mount
-  useEffect(() => {
+  // Load persisted review decisions from server SQLite (on mount, and when the audit
+  // trail is re-verified, so the table shows what is actually stored)
+  const loadReviewDecisions = useCallback(() => {
     apiFetch('/api/review-decisions')
       .then((r) => (r.ok ? r.json() : []))
       .then((data) => {
@@ -417,7 +418,11 @@ export function App() {
         }
       })
       .catch(() => {});
-  }, [authVersion]);
+  }, []);
+
+  useEffect(() => {
+    loadReviewDecisions();
+  }, [authVersion, loadReviewDecisions]);
 
   const handleReviewDecision = async (decision: ReviewDecision) => {
     setReviewDecisions((prev) => [decision, ...prev]);
@@ -618,6 +623,7 @@ export function App() {
               evaluations={allEvaluations}
               reviewDecisions={reviewDecisions}
               onReviewDecision={handleReviewDecision}
+              onReloadReviewDecisions={loadReviewDecisions}
               selectedReviewId={selectedReviewId}
               onClearSelectedReviewId={() => setSelectedReviewId(null)}
             />

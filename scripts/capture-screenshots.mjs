@@ -63,56 +63,27 @@ async function capture() {
       await firstInteraction.click();
       await new Promise((r) => setTimeout(r, 800));
 
-      // Select Dual Consensus judge provider
+      // Select Dual Consensus judge provider to showcase provider options
       await page.evaluate(() => {
         const dualBtns = Array.from(document.querySelectorAll('button'));
         const dualBtn = dualBtns.find((b) => b.textContent?.includes('Dual Consensus'));
         if (dualBtn) dualBtn.click();
       });
-      await new Promise((r) => setTimeout(r, 500));
+      await new Promise((r) => setTimeout(r, 600));
 
-      // Trigger the Judge evaluation
-      await page.evaluate(() => {
-        const judgeBtns = Array.from(document.querySelectorAll('button'));
-        const runBtn = judgeBtns.find(
-          (b) =>
-            b.textContent?.includes('Run Dual Judge') ||
-            b.textContent?.includes('Run Local Qwen') ||
-            b.textContent?.includes('Evaluate with') ||
-            b.textContent?.includes('Judge'),
-        );
-        if (runBtn) runBtn.click();
-      });
-
-      // Wait until the judge evaluation completes
-      console.log('Waiting for Judge evaluation to resolve...');
-      await page
-        .waitForFunction(
-          () => {
-            const text = document.body.innerText;
-            return (
-              text.includes('Consensus Verdict') ||
-              text.includes('Re-evaluate with Judge') ||
-              text.includes('Dual Consensus Adjudication') ||
-              text.includes('Score Deltas')
-            );
-          },
-          { timeout: 8000 },
-        )
-        .catch(() => console.log('Judge wait timed out, continuing...'));
-
-      await new Promise((r) => setTimeout(r, 1500));
-
-      // Scroll inside the interaction so the 3 buttons: Gemini 3.6, Qwen 2.5: 7B, Dual Consensus and Judge results are centered
+      // Scroll inside the interaction so the 3 lane deep dives, session risk accumulator,
+      // and the 3 available judge provider buttons (Gemini 3.6, Qwen 2.5: 7B, Dual Consensus)
+      // plus the "Run Dual Judge Consensus" button are centered without running the judge
       await page.evaluate(() => {
         const acc = Array.from(document.querySelectorAll('span')).find((s) =>
           s.textContent?.includes('Session risk accumulator'),
         );
         if (acc) {
           const rect = acc.getBoundingClientRect();
-          window.scrollTo({ top: window.scrollY + rect.top - 80, behavior: 'instant' });
+          window.scrollTo({ top: window.scrollY + rect.top - 460, behavior: 'instant' });
         }
       });
+      await new Promise((r) => setTimeout(r, 800));
       await snap('02b-multi-provider-judge.png', 1200);
       await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
     }

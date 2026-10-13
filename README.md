@@ -86,6 +86,10 @@ Inspect Server-Sent Events (SSE) token streams in real-time with automated multi
 - **Multi-Provider LLM Judge Engine**: Hot-swap arbitration between **Google Gemini 3.6 / 3.8 Flash Cloud**, **Local Sovereign Qwen 2.5: 7B** (via Ollama for zero data egress), or **Dual Judge Consensus**.
 - **Deep Token-Level Inspection**: Highlights triggered spans (PII exposure, ungrounded hallucinations, bias), displays multi-lane overlap details, and inspects model prompt and retrieved RAG context.
 
+<p align="center">
+  <img src="assets/screenshots/02b-multi-provider-judge.png" alt="Multi-Provider LLM Judge Engine with Gemini, Qwen, and Dual Consensus Controls" width="100%">
+</p>
+
 ---
 
 ### 3. Frontline Human-in-the-Loop Review Queue
@@ -93,12 +97,17 @@ Inspect Server-Sent Events (SSE) token streams in real-time with automated multi
 Borderline and high-risk interactions are routed directly to frontline operators for rapid triage, validation, and redaction verification.
 
 <p align="center">
-  <img src="assets/screenshots/03-human-review-queue.png" alt="Frontline Human Review Queue" width="100%">
+  <img src="assets/screenshots/03-human-review-queue.png" alt="Frontline Human Review Queue with Confirm Block, Sanitize & Edit, and Override to Allow Buttons" width="100%">
 </p>
 
 - **Context-Rich Triage**: Review prompt history, retrieved knowledge chunks, and withheld AI completions with surgical PII redline tags.
-- **Actionable Verdict Controls**: Confirm block, sanitize and allow, or override with justification notes.
+- **Actionable Verdict Controls**: Confirm block, sanitize and edit, or override to allow with justification notes via dedicated triage buttons on each interaction.
 - **Feedback & Drift Store**: Reviewer decisions calibrate operational baselines and train policy thresholds.
+- **Tamper-Evident Audit Trail**: Every triage decision is cryptographically signed and appended to an immutable HMAC-SHA256 hash chain.
+
+<p align="center">
+  <img src="assets/screenshots/03b-cryptographic-audit-chain.png" alt="Tamper-Evident Cryptographic Audit Chain and Verification" width="100%">
+</p>
 
 ---
 
@@ -479,7 +488,7 @@ flowchart TD
 ## Multi-provider LLM judge engine
 
 <p align="center">
-  <img src="assets/screenshots/02-live-stream-inspection.png" alt="Multi-Provider LLM Judge Arbitration in Live Stream" width="100%">
+  <img src="assets/screenshots/02b-multi-provider-judge.png" alt="Multi-Provider LLM Judge Engine Arbitration and Dual Consensus" width="100%">
 </p>
 
 ControlPlane Checker features an advanced, multi-tier LLM Judge architecture providing flexible arbitration across cloud, sovereign on-premise, and dual-consensus topologies:
@@ -595,7 +604,7 @@ ControlPlane Checker distinguishes between internal policy verdicts and the conc
 ## Cryptographic audit chain & tamper verification
 
 <p align="center">
-  <img src="assets/screenshots/06b-confusion-matrix-drilldown.png" alt="Cryptographic Audit and Ground-Truth Matrix Verification" width="100%">
+  <img src="assets/screenshots/03b-cryptographic-audit-chain.png" alt="Tamper-Evident Cryptographic Audit Chain and Verification" width="100%">
 </p>
 
 Every evaluation is recorded into a persistent SQLite database (`better-sqlite3` in WAL mode) with an immutable cryptographic HMAC-SHA256 chain:
@@ -654,7 +663,7 @@ lane_cutoffs:
 ## Four-tier policy enactment
 
 <p align="center">
-  <img src="assets/screenshots/04-policy-studio-interactive.png" alt="Four-Tier Policy Enactment Cutoffs and Presets" width="100%">
+  <img src="assets/screenshots/04b-four-tier-enactment.png" alt="Four-Tier Policy Enactment and Delivery Treatment on Live Interaction" width="100%">
 </p>
 
 | Tier                 | Condition / Threshold                                  | User Delivery Treatment                                                                                                                     | Latency Overhead             |
